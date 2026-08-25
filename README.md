@@ -1,5 +1,9 @@
 # CourseLM Automation Pipeline
 
+[![CI](https://github.com/OrdoAbChao7/courselm/actions/workflows/ci.yml/badge.svg)](https://github.com/OrdoAbChao7/courselm/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 个人课程资料自动化处理系统：把大学课程资料放进 `courses/<课程名>/`，一条命令完成
 上传 NotebookLM → 执行固定 Prompt → 生成结构化 Obsidian 复习文档。
 
@@ -30,14 +34,20 @@ courselm generate 电磁场
   → 写入 Vault
 ```
 
+## 环境要求
+
+- Python 3.11+
+- 网络环境需可访问 Google（支持代理：Windows 下自动检测系统代理，
+  其他系统在 `config.yaml` 的 `network.proxy` 显式指定）
+- 首次使用需一次浏览器登录（Chromium 自动下载，约 170 MB）
+
 ## 安装
 
-要求：Python 3.11+（在 [python.org](https://www.python.org/downloads/) 安装，勾选 Add to PATH）。
-
 ```powershell
-cd e:\Projects\note-agent
+git clone https://github.com/OrdoAbChao7/courselm.git
+cd courselm
 python -m venv .venv
-.venv\Scripts\pip install -e .
+.venv\Scripts\pip install -e ".[dev]"
 ```
 
 首次使用前登录 NotebookLM（打开浏览器，登录 Google 账号，登录态自动持久化，之后无需重复登录）：

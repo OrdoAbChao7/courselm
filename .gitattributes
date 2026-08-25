@@ -1,0 +1,12 @@
+# 统一换行符：仓库内 LF，检出时按平台原生处理
+* text=auto
+
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary

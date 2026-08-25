@@ -9,13 +9,20 @@ venv/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
 
 # 运行产物
 logs/
 output/
 courses/
+*.log
 
 # 环境与 IDE
 .env
 .idea/
 .vscode/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
