@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "courselm"
+version = "0.1.0"
+description = "CourseLM Automation Pipeline —— 课程资料 → NotebookLM → Obsidian 复习文档"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # NotebookLM 交互层（逆向 RPC 客户端，[browser] extra 引入 playwright 用于首次登录）
+    "notebooklm-py[browser]>=0.8.1,<0.9",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "loguru>=0.7",
+    "pydantic>=2.6",
+]
+
+[project.scripts]
+courselm = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+packages = ["modules"]

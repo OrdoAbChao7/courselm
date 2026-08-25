@@ -1,0 +1,38 @@
+# ============================================================
+# CourseLM 配置
+# 相对路径均相对于项目根目录；也可使用绝对路径（Windows 用 / 或 \\）
+# ============================================================
+
+paths:
+  courses_dir: ./courses     # 课程资料根目录：courses/<课程名>/...
+  output_dir: ./output       # 中间产物：output/<课程名>/{raw,md}/
+  logs_dir: ./logs           # 日志目录（按日滚动）
+
+obsidian:
+  vault_path: ""             # 【必填】Obsidian Vault 根目录，例如 D:/Obsidian/Vault
+  course_folder: 课程        # Vault 内存放各课程的文件夹名
+
+notebooklm:
+  upload_wait_timeout: 300   # 单文件上传后等待索引完成的超时（秒）
+  source_limit_warn: 50      # 单 Notebook 资料数告警阈值（免费版上限 50）
+
+prompt_runner:
+  retry: 1                   # 单个 Prompt 失败后的重试次数
+  max_question_types: 12     # 题型数量上限（控制阶段二 chats 用量：单课 = 3 固定 + N 题型）
+
+file_types:                  # 识别为课程资料的文件扩展名
+  - .pdf
+  - .ppt
+  - .pptx
+  - .doc
+  - .docx
+  - .jpg
+  - .jpeg
+  - .png
+  - .webp
+  - .gif
+
+markdown:
+  tags:                      # 所有生成文档 Front Matter 的公共标签
+    - 大学课程
+    - 复习
