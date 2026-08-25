@@ -40,6 +40,13 @@ class ObsidianConfig(BaseModel):
 class NotebookLMConfig(BaseModel):
     upload_wait_timeout: int = Field(gt=0)
     source_limit_warn: int = Field(gt=0)
+    browser: str = Field(default="chromium", pattern="^(chromium|chrome|msedge)$")
+
+
+class NetworkConfig(BaseModel):
+    """proxy: auto（读系统代理）/ none / 显式地址（如 http://127.0.0.1:7897）。"""
+
+    proxy: str = "auto"
 
 
 class PromptRunnerConfig(BaseModel):
@@ -55,6 +62,7 @@ class AppConfig(BaseModel):
     paths: PathConfig
     obsidian: ObsidianConfig
     notebooklm: NotebookLMConfig
+    network: NetworkConfig = NetworkConfig()
     prompt_runner: PromptRunnerConfig
     markdown: MarkdownConfig
     file_types: list[str]

@@ -233,14 +233,18 @@ class NotebookLMService:
         return answer
 
 
-def run_login() -> int:
+def run_login(browser: str = "chromium") -> int:
     """交互式登录：子进程调用上游 CLI（继承 stdio，浏览器流程对用户可见）。
 
     上游 CLI 负责 Chromium 预检、Google 登录页捕获、Cookie 原子持久化。
+    browser: chromium（Playwright 内置）/ chrome / msedge（系统浏览器，
+    内置 Chromium 异常时的备用路径）。
     返回进程退出码（0 成功）。
     """
     logger.info("启动 NotebookLM 登录流程（浏览器将自动打开）...")
-    proc = subprocess.run([sys.executable, "-m", "notebooklm", "login"])
+    proc = subprocess.run(
+        [sys.executable, "-m", "notebooklm", "login", "--browser", browser]
+    )
     if proc.returncode == 0:
         logger.info("登录成功，登录态已持久化，之后无需重复登录")
     else:

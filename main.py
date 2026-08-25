@@ -81,10 +81,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"配置错误：{e}", file=sys.stderr)
         return EXIT_USAGE
 
+    # 代理同步必须在任何网络操作（含 login 子进程）之前完成：
+    # httpx 只读环境变量，不读 Windows 系统代理
+    from modules.network import setup_proxy
+
+    setup_proxy(cfg.network.proxy)
+
     if args.command == "login":
         from modules.notebooklm import run_login
 
-        return run_login()
+        return run_login(cfg.notebooklm.browser)
     if args.command == "scan":
         return cmd_scan(args)
     if args.command == "generate":

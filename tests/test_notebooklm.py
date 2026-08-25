@@ -310,7 +310,20 @@ class TestRunLogin:
         monkeypatch.setattr("modules.notebooklm.subprocess.run", fake_run)
         assert run_login() == 0
         cmd = captured["cmd"]
-        assert cmd[1:] == ["-m", "notebooklm", "login"]
+        assert cmd[1:] == ["-m", "notebooklm", "login", "--browser", "chromium"]
+
+    def test_browser_option_forwarded(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        class FakeProc:
+            returncode = 0
+
+        monkeypatch.setattr(
+            "modules.notebooklm.subprocess.run",
+            lambda cmd, **kw: (captured.update(cmd=cmd) or FakeProc()),
+        )
+        assert run_login(browser="msedge") == 0
+        assert captured["cmd"][-1] == "msedge"
 
     def test_nonzero_exit_propagates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         class FakeProc:
