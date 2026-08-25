@@ -1,0 +1,21 @@
+# 参考仓库（不纳入本项目版本控制）
+notebooklm-py/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# 运行产物
+logs/
+output/
+courses/
+
+# 环境与 IDE
+.env
+.idea/
+.vscode/
