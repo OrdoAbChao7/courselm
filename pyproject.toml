@@ -17,6 +17,9 @@ dependencies = [
     "pydantic>=2.6",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 courselm = "main:main"
 

@@ -9,7 +9,7 @@ paths:
   logs_dir: ./logs           # 日志目录（按日滚动）
 
 obsidian:
-  vault_path: ""             # 【必填】Obsidian Vault 根目录，例如 D:/Obsidian/Vault
+  vault_path: 'D:\Obsidian\Obsidian Vault'   # 【必填】Obsidian Vault 根目录，例如 D:/Obsidian/Vault
   course_folder: 课程        # Vault 内存放各课程的文件夹名
 
 notebooklm:
