@@ -69,8 +69,28 @@ class UploadReport(BaseModel):
         return f"成功 {len(self.uploaded)} / 失败 {len(self.failed)}"
 
 
+def _login_redirect_errors() -> tuple[type[Exception], ...]:
+    """上游认证刷新抛出的私有异常 _LoginRedirectError。
+
+    它直接继承 ValueError（不在 NotebookLMError 体系内），登录态过期时从
+    from_storage()/API 调用中裸抛。防御性导入：私有路径跨版本可能变动，
+    导入失败则退化为不覆盖（该异常仍会被外层 CLI 捕获为未知错误）。
+    """
+    try:
+        from notebooklm._auth.extraction import _LoginRedirectError
+
+        return (_LoginRedirectError,)
+    except ImportError:  # pragma: no cover - 版本差异兜底
+        return ()
+
+
 # 认证类异常：出现即中止（后续操作必然继续失败）
-_AUTH_ERRORS = (HeadlessLoginRequiredError, AuthError, AuthExtractionError)
+_AUTH_ERRORS = (
+    HeadlessLoginRequiredError,
+    AuthError,
+    AuthExtractionError,
+    *_login_redirect_errors(),
+)
 # 账号级限流：继续重试只会更糟，同样中止
 _ABORT_ERRORS = _AUTH_ERRORS + (RateLimitError,)
 
@@ -121,12 +141,12 @@ class NotebookLMService:
                 raise NotebookLMAuthError(
                     f"未找到 NotebookLM 登录态文件，请先运行 courselm login（{e}）"
                 ) from e
+            except _AUTH_ERRORS as e:
+                raise NotebookLMAuthError(
+                    f"NotebookLM 登录态失效（{type(e).__name__}），"
+                    "请运行 courselm login 后重试"
+                ) from e
             except NotebookLMError as e:
-                if isinstance(e, _AUTH_ERRORS):
-                    raise NotebookLMAuthError(
-                        f"NotebookLM 登录态失效（{type(e).__name__}），"
-                        "请运行 courselm login 后重试"
-                    ) from e
                 raise NotebookLMOperationError(f"NotebookLM 客户端初始化失败：{e}") from e
         return self
 

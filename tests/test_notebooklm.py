@@ -267,6 +267,47 @@ class TestAsk:
         with pytest.raises(NotebookLMOperationError, match="rpc boom"):
             run(go())
 
+    def test_ask_login_redirect_translated(self) -> None:
+        """_LoginRedirectError（ValueError 系，非 NotebookLMError）也须翻译。"""
+        try:
+            from notebooklm._auth.extraction import _LoginRedirectError
+        except ImportError:
+            pytest.skip("上游无 _LoginRedirectError（版本变动）")
+
+        fake = FakeClient(chat=FakeChat(fail_error=_LoginRedirectError("redirect")))
+        svc = NotebookLMService(client=fake)
+
+        async def go():
+            async with svc:
+                return await svc.ask("nb-1", "问题")
+
+        with pytest.raises(NotebookLMAuthError, match="login"):
+            run(go())
+
+    def test_from_storage_login_redirect_translated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """from_storage() 阶段的 _LoginRedirectError 同样翻译（不再裸抛 traceback）。"""
+        try:
+            from notebooklm._auth.extraction import _LoginRedirectError
+        except ImportError:
+            pytest.skip("上游无 _LoginRedirectError（版本变动）")
+
+        def boom():
+            raise _LoginRedirectError("Authentication expired or invalid")
+
+        monkeypatch.setattr(
+            "modules.notebooklm.NotebookLMClient.from_storage", staticmethod(boom)
+        )
+        svc = NotebookLMService()
+
+        async def go():
+            async with svc:
+                pass
+
+        with pytest.raises(NotebookLMAuthError, match="login"):
+            run(go())
+
 
 class TestLifecycle:
     def test_client_closed_on_exit_when_owned_is_false_with_injection(self) -> None:
