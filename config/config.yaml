@@ -18,7 +18,7 @@ notebooklm:
   source_limit_warn: 50      # 单 Notebook 资料数告警阈值（免费版上限 50）
 
 network:
-  proxy: auto                # auto=自动检测 Windows 系统代理；none=直连；或显式地址 http://127.0.0.1:7897
+  proxy: http://127.0.0.1:7897 # 当前 NotebookLM 网络环境使用的本地代理；无代理时改为 none
 
 prompt_runner:
   retry: 1                   # 单个 Prompt 失败后的重试次数
