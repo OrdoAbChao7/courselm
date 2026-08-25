@@ -62,6 +62,7 @@ python -m venv .venv
 - 重复 `generate` 同一课程会复用已有 Notebook，已成功的 Prompt 读缓存跳过（节省每日 chats 配额）
 - 中间产物保存在 `output/<课程名>/`（raw 回答缓存 + 生成的 md），删除该目录即可强制全量重跑
 - 日志按日滚动保存在 `logs/`
+- 退出码：`0` 全部成功；`1` 配置/参数错误；`2` 运行时失败或部分 Prompt 失败（重跑同一命令自动续传）
 
 ## 配置
 
@@ -78,9 +79,14 @@ note-agent/
 ├── modules/                # 功能模块
 │   ├── file_manager.py     # 课程资料扫描
 │   ├── notebooklm.py       # NotebookLM 适配层
+│   ├── prompts.py          # Prompt 配置加载与渲染
 │   ├── prompt_runner.py    # 两阶段 Prompt 编排
 │   ├── markdown_generator.py  # Obsidian Markdown 生成
-│   └── obsidian_sync.py    # Vault 同步
+│   ├── obsidian_sync.py    # Vault 同步
+│   ├── network.py          # 系统代理适配（httpx 环境变量同步）
+│   └── config.py           # 配置加载与校验
+├── tests/                  # 单元测试（pytest，全部零网络）
+├── scripts/                # 诊断/验证脚本
 ├── courses/                # 课程资料（输入）
 ├── output/                 # 中间产物与缓存
 ├── logs/                   # 运行日志
