@@ -84,7 +84,12 @@ def _build_handout_files(cfg, course: str):
     from modules.handout_builder import build_handout
     from modules.latex_renderer import write_latex_document
 
-    result = build_handout(course, cfg.paths.output_dir)
+    result = build_handout(
+        course,
+        cfg.paths.output_dir,
+        courses_dir=cfg.paths.courses_dir,
+        max_types=cfg.prompt_runner.max_question_types,
+    )
     manuscript = result.manuscript_path.read_text(encoding="utf-8")
     write_latex_document(manuscript, result.tex_path, course)
     return result
