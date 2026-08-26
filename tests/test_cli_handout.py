@@ -53,3 +53,19 @@ def test_export_handout_copies_pdf_after_success(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr(main, "compile_latex", fake_compile)
     assert main.main(["export-handout", "电磁场"]) == 0
     assert (tmp_path / "output" / "电磁场" / "release" / "电磁场-期末复习讲义.pdf").is_file()
+
+
+def test_compile_latex_tolerates_missing_process_output(tmp_path: Path, monkeypatch) -> None:
+    tex = tmp_path / "main.tex"
+    tex.write_text("内容", encoding="utf-8")
+    monkeypatch.setattr(main.shutil, "which", lambda name: "xelatex.exe")
+
+    def fake_run(*args, **kwargs):
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        tex.with_suffix(".pdf").write_bytes(b"%PDF-fake")
+        return main.subprocess.CompletedProcess(args[0], 0, stdout=None, stderr=None)
+
+    monkeypatch.setattr(main.subprocess, "run", fake_run)
+
+    assert main.compile_latex(tex)[0] is True

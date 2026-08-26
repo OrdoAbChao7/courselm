@@ -33,7 +33,10 @@ def _inline(text: str) -> str:
     for match in _MATH.finditer(text):
         chunks.append(_escape_text(text[cursor : match.start()]))
         value = match.group(0)
-        chunks.append(value[2:-2] if value.startswith("$$") else value[1:-1])
+        if value.startswith("$$"):
+            chunks.append("\\[" + value[2:-2] + "\\]")
+        else:
+            chunks.append("\\(" + value[1:-1] + "\\)")
         cursor = match.end()
     chunks.append(_escape_text(text[cursor:]))
     return "".join(chunks)
@@ -45,13 +48,24 @@ def _table(lines: list[str]) -> str:
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
         if all(set(cell) <= {"-", ":", " "} for cell in cells):
             continue
-        rows.append(" & ".join(_inline(cell) for cell in cells) + r" \\")
+        rows.append(
+            " & ".join(_inline(cell).replace("\\[", "\\(").replace("\\]", "\\)") for cell in cells)
+            + r" \\")
     columns = max(1, len(rows[0].split(" & ")) if rows else 1)
     return "\\begin{tabular}{" + "|".join(["l"] * columns) + "}\n\\hline\n" + "\n\\hline\n".join(rows) + "\n\\end{tabular}"
 
 
 def render_markdown_to_latex(markdown: str) -> str:
-    lines = markdown.replace("\r\n", "\n").splitlines()
+    normalized = (
+        markdown.replace("\r\n", "\n")
+        .replace(r"\$$", "$$")
+        .replace(r"\$", "$")
+        .replace(r"\(", "$")
+        .replace(r"\)", "$")
+        .replace(r"\[", "$$")
+        .replace(r"\]", "$$")
+    )
+    lines = normalized.splitlines()
     output: list[str] = []
     i = 0
     in_list = False
@@ -70,6 +84,27 @@ def render_markdown_to_latex(markdown: str) -> str:
             if end > i and is_frontmatter:
                 i = end + 1
                 continue
+        if stripped.startswith("```"):
+            code_lines: list[str] = []
+            i += 1
+            while i < len(lines) and not lines[i].strip().startswith("```"):
+                code_lines.append(lines[i])
+                i += 1
+            if i < len(lines):
+                i += 1
+            output.append("\\begin{verbatim}\n" + "\n".join(code_lines) + "\n\\end{verbatim}")
+            continue
+        if stripped.count("$$") % 2 == 1:
+            math_lines = [line]
+            i += 1
+            while i < len(lines):
+                math_lines.append(lines[i])
+                if lines[i].count("$$") % 2 == 1:
+                    i += 1
+                    break
+                i += 1
+            output.append(_inline("\n".join(math_lines)))
+            continue
         if stripped.startswith("|") and i + 1 < len(lines) and "|" in lines[i + 1]:
             table_lines = [line]
             i += 1

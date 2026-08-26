@@ -67,9 +67,11 @@ def compile_latex(tex_path: Path) -> tuple[bool, str]:
             cwd=tex_path.parent,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
-        outputs.append(completed.stdout + completed.stderr)
+        outputs.append((completed.stdout or "") + (completed.stderr or ""))
         if completed.returncode != 0:
             return False, outputs[-1][-4000:]
     pdf_path = tex_path.with_suffix(".pdf")
