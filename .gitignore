@@ -9,6 +9,7 @@ venv/
 *.egg-info/
 dist/
 build/
+release/
 .pytest_cache/
 
 # 运行产物

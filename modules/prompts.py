@@ -21,6 +21,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from modules.path_manager import app_dir
+
 REQUIRED_FIXED_IDS = {"knowledge_structure", "question_type_summary", "formula_summary"}
 DYNAMIC_KEY = "question_type_detail"
 _ALLOWED_DYNAMIC_PLACEHOLDERS = {"{type_name}", "{type_list}"}
@@ -107,7 +109,7 @@ def _validate_placeholders(book: PromptBook) -> None:
 def load_prompts(path: Path | None = None) -> PromptBook:
     """加载并校验 prompts.yaml；缺省为项目根下 config/prompts.yaml。"""
     if path is None:
-        path = Path(__file__).resolve().parent.parent / "config" / "prompts.yaml"
+        path = app_dir() / "config" / "prompts.yaml"
     path = Path(path)
 
     if not path.is_file():

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import traceback
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
@@ -29,6 +30,8 @@ def find_project_root(start: Path) -> Path:
 
     for candidate in (location, *location.parents):
         if (candidate / "main.py").is_file() and (candidate / "pyproject.toml").is_file():
+            return candidate
+        if (candidate / "config").is_dir() and (candidate / "CourseLM.exe").is_file():
             return candidate
     raise LauncherError("找不到项目根目录，请将 CourseLM.exe 放在项目目录或 dist 目录中。")
 
@@ -129,6 +132,15 @@ class CourseLMApp:
         if self.process is not None:
             messagebox.showinfo("任务运行中", "当前已有任务正在运行，请等待它完成。")
             return
+        if getattr(sys, "frozen", False):
+            self._set_running(action, course)
+            threading.Thread(
+                target=self._run_in_process,
+                args=(action, course),
+                daemon=True,
+            ).start()
+            return
+
         try:
             command = build_command(self.project_root, action, course)
             self.process = subprocess.Popen(
@@ -147,11 +159,38 @@ class CourseLMApp:
             messagebox.showerror("启动失败", str(exc))
             return
 
+        self._set_running(action, course)
+        self._append(f">>> {' '.join(command)}\n")
+        threading.Thread(target=self._read_output, daemon=True).start()
+
+    def _set_running(self, action: str, course: str | None) -> None:
         self.login_button.state(["disabled"])
         self.generate_button.state(["disabled"])
         self.status_var.set(f"正在执行：{action}{f' {course}' if course else ''}")
-        self._append(f">>> {' '.join(command)}\n")
-        threading.Thread(target=self._read_output, daemon=True).start()
+
+    def _run_in_process(self, action: str, course: str | None) -> None:
+        """Portable 模式直接运行打包进 EXE 的主程序。"""
+        from contextlib import redirect_stderr, redirect_stdout
+
+        class QueueWriter:
+            def write(writer_self, value: str) -> int:
+                self.messages.put(("output", value))
+                return len(value)
+
+            def flush(writer_self) -> None:
+                return None
+
+        argv = [action] + ([course] if course else [])
+        writer = QueueWriter()
+        try:
+            import main as application
+
+            with redirect_stdout(writer), redirect_stderr(writer):
+                code = application.main(argv)
+        except Exception:
+            self.messages.put(("output", traceback.format_exc()))
+            code = 2
+        self.messages.put(("done", str(code)))
 
     def _read_output(self) -> None:
         assert self.process is not None and self.process.stdout is not None

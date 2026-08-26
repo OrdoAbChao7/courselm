@@ -16,6 +16,14 @@ def test_find_project_root_from_dist_directory(tmp_path: Path) -> None:
     assert find_project_root(dist) == tmp_path
 
 
+def test_find_project_root_from_portable_directory(tmp_path: Path) -> None:
+    (tmp_path / "config").mkdir()
+    executable = tmp_path / "CourseLM.exe"
+    executable.write_text("", encoding="utf-8")
+
+    assert find_project_root(executable) == tmp_path
+
+
 def test_discover_courses_returns_sorted_directories_only(tmp_path: Path) -> None:
     courses = tmp_path / "courses"
     (courses / "电动力学").mkdir(parents=True)

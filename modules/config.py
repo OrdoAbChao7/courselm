@@ -15,6 +15,8 @@ import yaml
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from modules.path_manager import config_path as default_config_path
+
 
 class ConfigurationError(Exception):
     """配置文件缺失、语法错误或校验失败。"""
@@ -89,7 +91,7 @@ class AppConfig(BaseModel):
 def load_config(config_path: Path | None = None) -> AppConfig:
     """加载并校验 config.yaml；config_path 缺省为项目根下 config/config.yaml。"""
     if config_path is None:
-        config_path = Path(__file__).resolve().parent.parent / "config" / "config.yaml"
+        config_path = default_config_path()
     config_path = Path(config_path)
 
     if not config_path.is_file():

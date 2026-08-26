@@ -10,13 +10,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
 from loguru import logger
 
 from modules.config import ConfigurationError, load_config
+from modules.browser_check import chrome_available
 from modules.logging_setup import setup_logging
+from modules.path_manager import build_runtime_env
 
 EXIT_OK = 0
 EXIT_USAGE = 1      # 配置/参数错误
@@ -164,6 +167,8 @@ def cmd_generate(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    # 必须在 NotebookLM 客户端初始化或登录子进程之前隔离 Portable 数据目录。
+    os.environ.update(build_runtime_env())
 
     try:
         cfg = load_config()
@@ -177,6 +182,16 @@ def main(argv: list[str] | None = None) -> int:
     from modules.network import setup_proxy
 
     setup_proxy(cfg.network.proxy)
+
+    if args.command in {"login", "generate"} and cfg.notebooklm.browser == "chrome":
+        if not chrome_available():
+            logger.error(
+                "未检测到 Google Chrome。\n"
+                "CourseLM 轻量版需要使用电脑上已安装的 Google Chrome "
+                "访问 NotebookLM。\n"
+                "请安装 Google Chrome 后重新启动 CourseLM。"
+            )
+            return EXIT_RUNTIME
 
     if args.command == "login":
         from modules.notebooklm import run_login

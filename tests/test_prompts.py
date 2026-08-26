@@ -61,6 +61,18 @@ class TestLoadPrompts:
         book = load_prompts(PROJECT_ROOT / "config" / "prompts.yaml")
         assert book.question_type_detail is not None
 
+    def test_default_path_is_resolved_from_application_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "prompts.yaml").write_text(VALID, encoding="utf-8")
+        monkeypatch.setattr("modules.prompts.app_dir", lambda: tmp_path)
+
+        book = load_prompts()
+
+        assert book.question_type_detail.output_subdir == "题型"
+
     def test_missing_file(self, tmp_path: Path) -> None:
         with pytest.raises(PromptConfigError, match="不存在"):
             load_prompts(tmp_path / "nope.yaml")

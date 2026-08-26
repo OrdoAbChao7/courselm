@@ -1,0 +1,38 @@
+# CourseLM Portable 默认配置。此文件由 build_portable.ps1 复制为 config.yaml。
+paths:
+  courses_dir: ./courses
+  output_dir: ./output
+  logs_dir: ./logs
+
+obsidian:
+  vault_path: ''
+  course_folder: 课程
+
+notebooklm:
+  browser: chrome
+  upload_wait_timeout: 300
+  source_limit_warn: 50
+
+network:
+  proxy: auto
+
+prompt_runner:
+  retry: 1
+  max_question_types: 12
+
+file_types:
+  - .pdf
+  - .ppt
+  - .pptx
+  - .doc
+  - .docx
+  - .jpg
+  - .jpeg
+  - .png
+  - .webp
+  - .gif
+
+markdown:
+  tags:
+    - 大学课程
+    - 复习

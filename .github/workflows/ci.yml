@@ -25,3 +25,30 @@ jobs:
 
       - name: Test
         run: pytest tests/ -q
+
+  portable:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime and build dependencies
+        run: |
+          pip install -e ".[dev]"
+          pip install pyinstaller
+
+      - name: Build Windows Portable ZIP
+        shell: pwsh
+        run: .\scripts\build_portable.ps1
+
+      - name: Upload Portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CourseLM-portable-windows-x64
+          path: release/CourseLM-portable-windows-x64.zip
+          if-no-files-found: error

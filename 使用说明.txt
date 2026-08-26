@@ -1,0 +1,17 @@
+CourseLM Portable 使用说明
+
+系统要求：
+Windows 10/11 64 位
+Google Chrome
+互联网连接
+
+第一次使用：
+1. 解压整个压缩包。
+2. 双击 CourseLM.exe。
+3. 在 NotebookLM 登录 Google。
+4. 把课程资料放入 courses 文件夹，或使用界面选择已有课程。
+5. 在 config/config.yaml 中填写 Obsidian Vault 路径后开始生成。
+
+登录状态保存在本目录的 user_data 文件夹中。
+请不要只复制 CourseLM.exe；必须保留整个文件夹结构。
+CourseLM 不附带 Python 或 Chromium，只使用电脑上已安装的 Google Chrome。
