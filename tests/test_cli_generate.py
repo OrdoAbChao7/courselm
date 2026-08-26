@@ -49,7 +49,7 @@ class FakeService:
         if self.auth_fail:
             raise NotebookLMAuthError("登录态失效")
         self.ask_count += 1
-        if "常考题型" in question:  # 真实 prompts.yaml 题型总结模板的特征词
+        if "机器可解析的题型清单" in question:  # 真实题型识别地图模板的稳定契约
             return SUMMARY_ANSWER
         return f"## 回答\n\n针对问题的详细内容，含公式 \\(E=mc^2\\)。"
 
@@ -97,11 +97,13 @@ class TestGenerateFullFlow:
 
         assert rc == 0
         course_dir = vault / "课程" / "电磁场"
-        assert (course_dir / "知识结构.md").is_file()
-        assert (course_dir / "公式总结.md").is_file()
-        assert (course_dir / "题型" / "题型总结.md").is_file()
-        assert (course_dir / "题型" / "镜像法.md").is_file()
-        assert (course_dir / "题型" / "分离变量法.md").is_file()
+        assert (course_dir / "00-使用说明.md").is_file()
+        assert (course_dir / "04-一页知识骨架.md").is_file()
+        assert (course_dir / "06-公式工具箱.md").is_file()
+        assert (course_dir / "07-题型识别地图.md").is_file()
+        assert (course_dir / "08-高频题型精讲" / "镜像法.md").is_file()
+        assert (course_dir / "08-高频题型精讲" / "分离变量法.md").is_file()
+        assert (course_dir / "12-综合自测与补救路线.md").is_file()
 
         out = capsys.readouterr().out
         assert "处理完成" in out
@@ -109,7 +111,7 @@ class TestGenerateFullFlow:
         assert "同步" in out
 
         # 文档内容含 front matter 与转换后的公式
-        text = (course_dir / "知识结构.md").read_text(encoding="utf-8")
+        text = (course_dir / "04-一页知识骨架.md").read_text(encoding="utf-8")
         assert text.startswith("---\n")
         assert "$E=mc^2$" in text
 
@@ -129,8 +131,8 @@ class TestGenerateFullFlow:
 
         assert rc == 2
         course_dir = vault / "课程" / "电磁场"
-        assert (course_dir / "知识结构.md").is_file()        # 成功的照常生成
-        assert not (course_dir / "题型" / "镜像法.md").exists()  # 失败的不生成
+        assert (course_dir / "04-一页知识骨架.md").is_file()  # 成功的照常生成
+        assert not (course_dir / "08-高频题型精讲" / "镜像法.md").exists()
         out = capsys.readouterr().out
         assert "失败明细" in out
 
@@ -165,9 +167,9 @@ class TestGeneratePromptsFilter:
 
         assert rc == 0
         course_dir = vault / "课程" / "电磁场"
-        assert (course_dir / "公式总结.md").is_file()
-        assert not (course_dir / "知识结构.md").exists()    # 其他固定 prompt 未跑
-        assert not (course_dir / "题型").exists()            # 调试模式跳过阶段二
+        assert (course_dir / "06-公式工具箱.md").is_file()
+        assert not (course_dir / "04-一页知识骨架.md").exists()  # 其他固定 prompt 未跑
+        assert not (course_dir / "08-高频题型精讲").exists()    # 调试模式跳过阶段二
         assert fake_service.ask_count == 1
 
     def test_unknown_prompt_id_exit1(self, env, fake_service) -> None:
