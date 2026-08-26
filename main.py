@@ -91,7 +91,13 @@ def _build_handout_files(cfg, course: str):
         max_types=cfg.prompt_runner.max_question_types,
     )
     manuscript = result.manuscript_path.read_text(encoding="utf-8")
-    write_latex_document(manuscript, result.tex_path, course)
+    write_latex_document(
+        manuscript,
+        result.tex_path,
+        f"{course}{result.template.title_suffix}",
+        subtitle=result.template.subtitle,
+        style=result.template.latex,
+    )
     return result
 
 

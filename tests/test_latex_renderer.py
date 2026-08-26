@@ -25,20 +25,31 @@ $$\\nabla \\cdot \\mathbf{E}=\\frac{\\rho}{\\varepsilon_0}$$
 
 
 def test_write_latex_document_uses_chinese_document_template(tmp_path: Path) -> None:
-    path = write_latex_document("# 复习\n\n内容", tmp_path / "main.tex", "电磁场")
+    path = write_latex_document(
+        "# 复习\n\n内容",
+        tmp_path / "main.tex",
+        "电磁场考前三天冲刺讲义",
+        subtitle="面向基础薄弱学生",
+        style={"primary_color": "123456", "warning_color": "AA0000"},
+    )
 
     text = path.read_text(encoding="utf-8")
     assert "\\documentclass" in text
     assert "ctexart" in text
     assert "\\begin{document}" in text
-    assert "\\title{电磁场期末复习讲义}" in text
+    assert "\\title{电磁场考前三天冲刺讲义}" in text
+    assert "面向基础薄弱学生" in text
+    assert "\\definecolor{primary}{HTML}{123456}" in text
+    assert "\\definecolor{warning}{HTML}{AA0000}" in text
+    assert "\\usepackage{fancyhdr}" in text
+    assert "\\fancyfoot[C]{\\thepage}" in text
     assert "\\section{复习}" in text
 
 
-def test_render_markdown_converts_table_to_tabular(tmp_path: Path) -> None:
+def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
     rendered = render_markdown_to_latex("| 题型 | 频率 |\n| --- | --- |\n| 镜像法 | 高 |")
 
-    assert "\\begin{tabular}" in rendered
+    assert "\\begin{longtable}" in rendered
     assert "镜像法" in rendered
     assert "\\hline" in rendered
 
@@ -84,3 +95,33 @@ def test_render_markdown_wraps_fenced_code_as_verbatim() -> None:
     assert "\\begin{verbatim}" in rendered
     assert "[1] ---> [2]" in rendered
     assert "\\end{verbatim}" in rendered
+
+
+def test_render_markdown_converts_page_break_marker() -> None:
+    rendered = render_markdown_to_latex("上一章\n\n<!-- PAGE_BREAK -->\n\n下一章")
+
+    assert "\\clearpage" in rendered
+    assert "PAGE_BREAK" not in rendered
+
+
+def test_render_markdown_converts_semantic_callouts() -> None:
+    source = """> [!IMPORTANT] 必须掌握
+> 这是核心结论 $E=mc^2$。
+
+> [!TIP] 解题提示
+> 先判断条件。
+
+> [!WARNING] 易错
+> 不要漏单位。
+
+> [!CHECK] 30 秒自测
+> 你能复述步骤吗？
+"""
+
+    rendered = render_markdown_to_latex(source)
+
+    assert "\\begin{importantbox}[title={必须掌握}]" in rendered
+    assert "\\begin{tipbox}[title={解题提示}]" in rendered
+    assert "\\begin{warningbox}[title={易错}]" in rendered
+    assert "\\begin{checkbox}[title={30 秒自测}]" in rendered
+    assert "\\(E=mc^2\\)" in rendered
