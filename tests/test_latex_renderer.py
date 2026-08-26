@@ -42,6 +42,7 @@ def test_write_latex_document_uses_chinese_document_template(tmp_path: Path) -> 
     assert "\\definecolor{primary}{HTML}{123456}" in text
     assert "\\definecolor{warning}{HTML}{AA0000}" in text
     assert "\\usepackage{fancyhdr}" in text
+    assert "\\setlength{\\headheight}{15pt}" in text
     assert "\\fancyfoot[C]{\\thepage}" in text
     assert "\\section{复习}" in text
 

@@ -208,6 +208,7 @@ def write_latex_document(
         "\\usepackage{fancyhdr}\n"
         "\\usepackage[most]{tcolorbox}\n"
         "\\geometry{margin=2.2cm}\n"
+        "\\setlength{\\headheight}{15pt}\n"
         "\\setlength{\\parindent}{2em}\n"
         f"\\definecolor{{primary}}{{HTML}}{{{_color(style, 'primary_color', '1F4E79')}}}\n"
         f"\\definecolor{{emphasis}}{{HTML}}{{{_color(style, 'emphasis_color', 'E67E22')}}}\n"
