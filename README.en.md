@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-CourseLM sends course materials to NotebookLM and generates review documents ready to import into Obsidian.
+CourseLM sends course materials to NotebookLM and creates a three-day final-exam crash handout that can be imported into Obsidian or exported as PDF. The default product is designed for students with weak foundations: establish the map, focus on core exam points, recognize question types, and avoid preventable mistakes.
 
 ## Download the Portable version
 
@@ -44,35 +44,51 @@ Supported source files include PDF, PPT, DOCX, and images. Common commands:
 .venv\Scripts\courselm generate 电磁场 --prompts question_type_summary
 ```
 
-## Build an exam handout
+## Build a three-day crash handout
 
-After the Obsidian notes have been generated, build a focused handout draft and export it with XeLaTeX:
+Use `--fresh` the first time you adopt the new module set; legacy cache entries are not automatically rewritten:
+
+```powershell
+.venv\Scripts\courselm generate 电磁场 --fresh
+```
+
+A fresh run uses **12 + N NotebookLM chats**: twelve fixed teaching modules and up to `max_question_types` dynamic question-type tutorials. Then assemble and export the handout:
 
 ```powershell
 .venv\Scripts\courselm build-handout 电磁场
 .venv\Scripts\courselm export-handout 电磁场
 ```
 
-The Markdown manuscript and LaTeX source are written under `output/<course>/handout/`; the PDF is written under `output/<course>/release/`. Install XeLaTeX through TeX Live or MiKTeX before exporting. Review facts, formulas, examples, personal information, and copyright before selling the handout.
+The Markdown manuscript and LaTeX source are written under `output/<course>/handout/`; the PDF is written under `output/<course>/release/`. Install TeX Live or MiKTeX with XeLaTeX and add its `bin` directory to PATH before exporting. Review facts, formulas, examples, personal information, and copyright before selling the handout.
+
+The default schedule assumes 4–6 hours per day: day one builds the exam map and foundations, day two focuses on formulas and question types, and day three covers mistakes, minimum practice, the cram sheet, and final self-testing.
 
 ## Workflow and output
 
 ```text
 Scan course files → create/reuse a NotebookLM notebook → upload files
-→ fixed prompts (knowledge structure, question types, formulas)
-→ generate details for each question type → sanitize Markdown/LaTeX
-→ sync to Obsidian
+→ 12 fixed teaching prompts → parse the question-type map
+→ generate N question-type tutorials → sanitize Markdown
+→ assemble LaTeX/PDF → sync to Obsidian
 ```
 
 Example output:
 
 ```text
 课程/电磁场/
-├── 知识结构.md
-├── 公式总结.md
-└── 题型/
-    ├── 题型总结.md
-    └── <题型名>.md
+├── 00-使用说明.md
+├── 01-考前三天学习规划.md
+├── 02-考试地图.md
+├── 03-零基础补给站.md
+├── 04-一页知识骨架.md
+├── 05-核心考点卡.md
+├── 06-公式工具箱.md
+├── 07-题型识别地图.md
+├── 08-高频题型精讲/<题型名>.md
+├── 09-易错点诊断室.md
+├── 10-最小训练集.md
+├── 11-考前速记.md
+└── 12-综合自测与补救路线.md
 ```
 
 All generated output passes through one Markdown Sanitizer. It decodes HTML entities, removes HTML residue, preserves ordinary Markdown, and repairs escaped LaTeX subscripts only inside math regions. Inline and block formulas use `$...$` and `$$...$$`, compatible with Obsidian MathJax.
@@ -83,7 +99,23 @@ All generated output passes through one Markdown Sanitizer. It decodes HTML enti
 |---|---|
 | `config/config.yaml` | Paths, Vault, timeouts, retries, and source file types |
 | `config/prompts.yaml` | Prompt templates |
+| `config/handout_templates/default.yaml` | Default handout order, title, and LaTeX style |
 | `config/config.portable.yaml` | Portable default configuration template |
+
+Create `courses/<course>/handout.yaml` to customize one course. Scalar values override defaults, `latex` color keys are merged, and a supplied `sections` list replaces the default directory:
+
+```yaml
+title_suffix: Final Exam Problem Manual
+subtitle: Customized for this course
+latex:
+  primary_color: 3B2E5A
+sections:
+  - id: exam_map
+    title: Course Exam Scope
+    source: 02-考试地图.md
+    required: true
+    page_break: true
+```
 
 ## Build the Portable ZIP from source
 

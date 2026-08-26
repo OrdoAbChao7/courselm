@@ -31,15 +31,15 @@
 - Modify: `tests/test_prompt_runner.py`
 
 **Interfaces:**
-- `REQUIRED_FIXED_IDS` includes all twelve fixed teaching modules.
+- The default prompt book contains all twelve fixed teaching modules; the loader retains the three historical compatibility IDs for custom prompt books.
 - `render_fixed(prompt: FixedPrompt, max_types: int) -> str` continues to inject `{max_types}` only into `question_type_summary`.
 - Existing `PromptBook` and `run_pipeline` signatures remain unchanged.
 
-- [ ] Write failing tests asserting the twelve required IDs, exact output files, three-day-plan constraints, callout rules, and dynamic question output under `08-高频题型精讲`.
-- [ ] Run `.venv\Scripts\python -m pytest tests/test_prompts.py tests/test_prompt_runner.py -q` and confirm failures reflect missing prompts/contracts.
-- [ ] Replace `config/prompts.yaml` with the twelve fixed module prompts and the revised dynamic detail prompt specified by the design.
-- [ ] Update validation constants and shared output rules without changing pipeline orchestration.
-- [ ] Re-run the focused tests and commit `feat: generate three-day crash course modules`.
+- [x] Write failing tests asserting the twelve default IDs, exact output files, three-day-plan constraints, callout rules, and dynamic question output under `08-高频题型精讲`.
+- [x] Run `.venv\Scripts\python -m pytest tests/test_prompts.py tests/test_prompt_runner.py -q` and confirm failures reflect missing prompts/contracts.
+- [x] Replace `config/prompts.yaml` with the twelve fixed module prompts and the revised dynamic detail prompt specified by the design.
+- [x] Update compatibility validation and shared output rules without changing pipeline orchestration.
+- [x] Re-run the focused tests and commit `feat: generate three-day crash course modules`.
 
 ### Task 2: Add validated default and course-specific handout templates
 
@@ -54,11 +54,11 @@
 - `HandoutTemplate(title_suffix: str, subtitle: str, sections: list[HandoutSection], latex: dict[str, str])`.
 - `load_handout_template(course: str, courses_dir: Path, default_path: Path | None = None) -> HandoutTemplate`.
 
-- [ ] Write failing tests for default loading, course title/style override, full section replacement, duplicate IDs, missing source/glob, and traversal paths.
-- [ ] Run `.venv\Scripts\python -m pytest tests/test_handout_template.py -q` and confirm the module is missing.
-- [ ] Implement Pydantic validation and top-level override merging; lists replace defaults and the `latex` mapping merges keys.
-- [ ] Add the default YAML with the exact fourteen-module order from the spec.
-- [ ] Re-run the focused tests and commit `feat: add configurable handout templates`.
+- [x] Write failing tests for default loading, course title/style override, full section replacement, duplicate IDs, missing source/glob, and traversal paths.
+- [x] Run `.venv\Scripts\python -m pytest tests/test_handout_template.py -q` and confirm the module is missing.
+- [x] Implement Pydantic validation and top-level override merging; lists replace defaults and the `latex` mapping merges keys.
+- [x] Add the default YAML with the exact fourteen-module order from the spec.
+- [x] Re-run the focused tests and commit `feat: add configurable handout templates`.
 
 ### Task 3: Rebuild manuscript assembly around the template
 
@@ -73,11 +73,11 @@
 - `HandoutBuildResult` adds `template: HandoutTemplate` and retains manuscript/tex/missing fields.
 - `_build_handout_files` passes `cfg.paths.courses_dir` and template title/style into LaTeX generation.
 
-- [ ] Replace old three-file fixtures with all default module files and write failing tests for exact order, page-break markers, dynamic question sorting, missing required modules, and custom section replacement.
-- [ ] Run `.venv\Scripts\python -m pytest tests/test_handout_builder.py tests/test_cli_handout.py -q` and confirm the hard-coded builder fails the new expectations.
-- [ ] Implement template-driven discovery, source markers, module purpose text, and stable glob expansion excluding duplicate index files.
-- [ ] Update CLI integration while keeping `build-handout` and `export-handout` command names unchanged.
-- [ ] Re-run the focused tests and commit `feat: assemble template-driven crash handouts`.
+- [x] Replace old three-file fixtures with all default module files and write failing tests for exact order, page-break markers, dynamic question sorting, missing required modules, and custom section replacement.
+- [x] Run `.venv\Scripts\python -m pytest tests/test_handout_builder.py tests/test_cli_handout.py -q` and confirm the hard-coded builder fails the new expectations.
+- [x] Implement template-driven discovery, source markers, module purpose text, and stable glob expansion excluding duplicate index files.
+- [x] Update CLI integration while keeping `build-handout` and `export-handout` command names unchanged.
+- [x] Re-run the focused tests and commit `feat: assemble template-driven crash handouts`.
 
 ### Task 4: Render teaching semantics in LaTeX
 
@@ -91,11 +91,11 @@
 - Obsidian callouts `[!IMPORTANT]`, `[!TIP]`, `[!WARNING]`, `[!CHECK]` become colored breakable `tcolorbox` environments.
 - Markdown tables render as `longtable` so they can cross pages.
 
-- [ ] Write failing tests for title/subtitle, semantic colors, page breaks, four callout types, headers/footers, and longtable output.
-- [ ] Run `.venv\Scripts\python -m pytest tests/test_latex_renderer.py -q` and confirm failures expose unsupported semantics.
-- [ ] Extend the line renderer and document preamble with `xcolor`, `tcolorbox`, `fancyhdr`, `longtable`, and configurable colors.
-- [ ] Preserve existing math, code-block, front-matter, list, and Obsidian-link behavior.
-- [ ] Re-run the focused tests and commit `feat: style three-day teaching handouts`.
+- [x] Write failing tests for title/subtitle, semantic colors, page breaks, four callout types, headers/footers, and longtable output.
+- [x] Run `.venv\Scripts\python -m pytest tests/test_latex_renderer.py -q` and confirm failures expose unsupported semantics.
+- [x] Extend the line renderer and document preamble with `xcolor`, `tcolorbox`, `fancyhdr`, `longtable`, and configurable colors.
+- [x] Preserve existing math, code-block, front-matter, list, and Obsidian-link behavior.
+- [x] Re-run the focused tests and commit `feat: style three-day teaching handouts`.
 
 ### Task 5: Update product documentation and verify the full loop
 
@@ -108,10 +108,10 @@
 **Interfaces:**
 - Document the default three-day directory, prompt cost (`12 + N` chats on a fresh run), course override path, and exact build/export commands.
 
-- [ ] Update documentation with the directory tree, three-day study path, custom YAML example, `--fresh` migration note, and MiKTeX requirement.
-- [ ] Run `git diff --check`.
-- [ ] Run `.venv\Scripts\python -m pytest tests/ -q` and record the exact pass count.
-- [ ] Run `.venv\Scripts\courselm build-handout 电动力学` and inspect the generated manuscript and TeX ordering.
-- [ ] If the current NotebookLM login/profile is available, run `.venv\Scripts\courselm generate 电动力学 --fresh`; otherwise report the exact authentication/profile blocker without claiming generation success.
-- [ ] Run `.venv\Scripts\courselm export-handout 电动力学`, confirm exit code 0, render representative PDF pages, and inspect layout.
-- [ ] Commit `docs: document three-day crash handout workflow`.
+- [x] Update documentation with the directory tree, three-day study path, custom YAML example, `--fresh` migration note, and MiKTeX requirement.
+- [x] Run `git diff --check`.
+- [x] Run `.venv\Scripts\python -m pytest tests/ -q` and record the exact pass count.
+- [x] Run `.venv\Scripts\courselm build-handout 电动力学` and verify that legacy outputs are rejected with the complete new missing-module list.
+- [x] Attempt `.venv\Scripts\courselm generate 电动力学 --fresh`; record the missing `user_data/profiles/default/storage_state.json` authentication blocker and do not claim generation success.
+- [x] Compile the current renderer with MiKTeX twice, render representative PDF pages, and inspect title, TOC, headers, formulas, table, callouts, and page breaks.
+- [x] Commit `docs: document three-day crash handout workflow`.
