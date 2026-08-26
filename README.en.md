@@ -44,6 +44,17 @@ Supported source files include PDF, PPT, DOCX, and images. Common commands:
 .venv\Scripts\courselm generate 电磁场 --prompts question_type_summary
 ```
 
+## Build an exam handout
+
+After the Obsidian notes have been generated, build a focused handout draft and export it with XeLaTeX:
+
+```powershell
+.venv\Scripts\courselm build-handout 电磁场
+.venv\Scripts\courselm export-handout 电磁场
+```
+
+The Markdown manuscript and LaTeX source are written under `output/<course>/handout/`; the PDF is written under `output/<course>/release/`. Install XeLaTeX through TeX Live or MiKTeX before exporting. Review facts, formulas, examples, personal information, and copyright before selling the handout.
+
 ## Workflow and output
 
 ```text

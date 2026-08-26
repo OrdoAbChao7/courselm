@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,7 +45,83 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--fresh", action="store_true", help="忽略缓存，强制重跑")
     p_gen.add_argument("--prompts", default=None, help="只执行指定固定 Prompt（逗号分隔 id）")
 
+    p_handout = sub.add_parser("build-handout", help="从 Obsidian Markdown 生成讲义初稿和 LaTeX 源码")
+    p_handout.add_argument("course", help="课程名")
+
+    p_export = sub.add_parser("export-handout", help="编译讲义 LaTeX 并导出 PDF")
+    p_export.add_argument("course", help="课程名")
+
     return parser
+
+
+def compile_latex(tex_path: Path) -> tuple[bool, str]:
+    """Compile a TeX document twice so the table of contents is resolved."""
+
+    executable = shutil.which("xelatex")
+    if not executable:
+        return False, "未找到 xelatex，请安装 TeX Live 或 MiKTeX 并将其加入 PATH"
+    outputs: list[str] = []
+    for _ in range(2):
+        completed = subprocess.run(
+            [executable, "-interaction=nonstopmode", tex_path.name],
+            cwd=tex_path.parent,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        outputs.append(completed.stdout + completed.stderr)
+        if completed.returncode != 0:
+            return False, outputs[-1][-4000:]
+    pdf_path = tex_path.with_suffix(".pdf")
+    if not pdf_path.is_file():
+        return False, "xelatex 返回成功，但没有生成 PDF 文件"
+    return True, "\n".join(outputs)[-4000:]
+
+
+def _build_handout_files(cfg, course: str):
+    from modules.handout_builder import build_handout
+    from modules.latex_renderer import write_latex_document
+
+    result = build_handout(course, cfg.paths.output_dir)
+    manuscript = result.manuscript_path.read_text(encoding="utf-8")
+    write_latex_document(manuscript, result.tex_path, course)
+    return result
+
+
+def cmd_build_handout(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    try:
+        result = _build_handout_files(cfg, args.course)
+    except (OSError, ValueError) as e:
+        logger.error("讲义生成失败：{}", e)
+        return EXIT_USAGE
+    print(f"讲义初稿已生成：{result.manuscript_path}")
+    print(f"LaTeX 源码已生成：{result.tex_path}")
+    if result.missing_inputs:
+        print(f"缺失输入：{', '.join(result.missing_inputs)}")
+        return EXIT_RUNTIME
+    return EXIT_OK
+
+
+def cmd_export_handout(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    try:
+        result = _build_handout_files(cfg, args.course)
+    except (OSError, ValueError) as e:
+        logger.error("讲义生成失败：{}", e)
+        return EXIT_USAGE
+    ok, log = compile_latex(result.tex_path)
+    if not ok:
+        result.tex_path.with_suffix(".log").write_text(log, encoding="utf-8")
+        logger.error("LaTeX 编译失败：{}", log)
+        return EXIT_RUNTIME
+    release_dir = cfg.paths.output_dir / args.course / "release"
+    release_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = result.tex_path.with_suffix(".pdf")
+    target = release_dir / f"{args.course}-期末复习讲义.pdf"
+    shutil.copy2(pdf_path, target)
+    print(f"PDF 已导出：{target}")
+    return EXIT_OK
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
@@ -201,6 +279,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_scan(args)
     if args.command == "generate":
         return cmd_generate(args)
+    if args.command == "build-handout":
+        return cmd_build_handout(args)
+    if args.command == "export-handout":
+        return cmd_export_handout(args)
     parser.error(f"未知命令：{args.command}")
     return EXIT_USAGE
 

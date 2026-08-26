@@ -44,6 +44,17 @@ python -m venv .venv
 .venv\Scripts\courselm generate 电磁场 --prompts question_type_summary
 ```
 
+## 生成期末复习讲义
+
+在已经生成 Obsidian 资料后，可以把它们整理为面向基础一般、临近期末学生的讲义初稿：
+
+```powershell
+.venv\Scripts\courselm build-handout 电磁场
+.venv\Scripts\courselm export-handout 电磁场
+```
+
+产物位于 `output/<课程名>/handout/` 和 `output/<课程名>/release/`。导出 PDF 前需要安装 XeLaTeX（TeX Live 或 MiKTeX）并加入 PATH。讲义是人工审阅初稿，正式出售前请检查事实、公式、例题、个人信息和版权。
+
 ## 工作流程与输出
 
 ```text
