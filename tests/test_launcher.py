@@ -39,5 +39,12 @@ def test_build_command_uses_project_venv_python(tmp_path: Path) -> None:
 
 
 def test_build_command_rejects_missing_python(tmp_path: Path) -> None:
-    with pytest.raises(LauncherError, match="\.venv"):
+    with pytest.raises(LauncherError, match=r"\.venv"):
         build_command(tmp_path, "login")
+
+
+def test_launcher_is_declared_as_installed_module() -> None:
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    text = pyproject.read_text(encoding="utf-8")
+
+    assert "py-modules = [\"main\", \"launcher\"]" in text
