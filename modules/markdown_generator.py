@@ -20,6 +20,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from modules.config import AppConfig
+from modules.markdown_sanitizer import sanitize_markdown
 from modules.prompt_runner import PipelineResult
 from modules.prompts import PromptBook
 
@@ -41,7 +42,7 @@ def _convert_math(text: str) -> str:
     return text
 
 
-def clean_markdown(text: str) -> str:
+def _legacy_clean_markdown(text: str) -> str:
     """防御性清洗：公式定界符、空行、不可见字符。
 
     代码块（``` / ~~~ 围栏）内容原样保留——其中的 \\[ \\( 是字面代码，
@@ -60,6 +61,11 @@ def clean_markdown(text: str) -> str:
             seg = _MULTI_BLANK.sub("\n\n", seg)
             out_parts.append(seg)
     return "".join(out_parts).strip()
+
+
+def clean_markdown(text: str) -> str:
+    """统一委托给 Markdown Sanitizer。"""
+    return sanitize_markdown(text)
 
 
 # --------------------------------------------------------------- Front Matter

@@ -25,6 +25,19 @@ REQUIRED_FIXED_IDS = {"knowledge_structure", "question_type_summary", "formula_s
 DYNAMIC_KEY = "question_type_detail"
 _ALLOWED_DYNAMIC_PLACEHOLDERS = {"{type_name}", "{type_list}"}
 
+MARKDOWN_OUTPUT_RULES = """
+
+Markdown 与公式输出规范：
+1. 输出必须为标准 Markdown。
+2. 行内公式使用 $...$，独立公式使用 $$...$$。
+3. 所有公式必须使用标准 LaTeX。
+4. 数学下标必须使用 _，例如 E_0、\\epsilon_r、\\mu_r、S_{av}、E_{xm}。
+5. 禁止使用 \\_ 表示数学下标，禁止使用 * 代替 LaTeX 下标。
+6. 禁止输出 HTML Entity 或 HTML 标签控制换行。
+7. 不要在 $ 或 $$ 外添加多余反斜杠。
+8. 输出应能够直接保存为 .md，并由 Obsidian MathJax 正常渲染。
+""".strip()
+
 
 class PromptConfigError(Exception):
     """Prompt 配置缺失、语法错误或校验失败。"""
@@ -117,10 +130,13 @@ def load_prompts(path: Path | None = None) -> PromptBook:
 def render_fixed(prompt: FixedPrompt, max_types: int) -> str:
     """渲染固定模板。question_type_summary 注入题型数量上限。"""
     if prompt.id == "question_type_summary":
-        return prompt.template.format(max_types=max_types)
-    return prompt.template
+        rendered = prompt.template.format(max_types=max_types)
+    else:
+        rendered = prompt.template
+    return f"{rendered.rstrip()}\n\n{MARKDOWN_OUTPUT_RULES}"
 
 
 def render_dynamic(prompt: DynamicPrompt, type_name: str, type_list: str) -> str:
     """渲染动态模板（{type_name} / {type_list} 填充）。"""
-    return prompt.template.format(type_name=type_name, type_list=type_list)
+    rendered = prompt.template.format(type_name=type_name, type_list=type_list)
+    return f"{rendered.rstrip()}\n\n{MARKDOWN_OUTPUT_RULES}"

@@ -9,6 +9,9 @@
 #   {max_types}  —— 题型数量上限（来自 config.yaml: prompt_runner.max_question_types）
 #   {type_name}  —— 当前题型名称
 #   {type_list}  —— 全部题型名称清单（顿号连接），供"与其他题型的联系"引用
+#
+# 所有 Prompt 由 modules.prompts 统一追加 Markdown 与公式输出规范，
+# 避免在每个模板中重复维护相同的 LaTeX/Obsidian 约束。
 # ============================================================
 
 fixed:

@@ -105,7 +105,9 @@ class TestRender:
     def test_render_fixed_others_untouched(self, tmp_path: Path) -> None:
         book = load_prompts(write(tmp_path, VALID))
         p = book.fixed_by_id("knowledge_structure")
-        assert render_fixed(p, max_types=12) == p.template
+        rendered = render_fixed(p, max_types=12)
+        assert rendered.startswith(p.template)
+        assert "Markdown 与公式输出规范" in rendered
 
     def test_render_dynamic(self, tmp_path: Path) -> None:
         book = load_prompts(write(tmp_path, VALID))
@@ -114,6 +116,17 @@ class TestRender:
         )
         assert "「镜像法」" in out
         assert "镜像法、分离变量法" in out
+
+    def test_render_includes_common_markdown_output_rules(self, tmp_path: Path) -> None:
+        book = load_prompts(write(tmp_path, VALID))
+        fixed = render_fixed(book.fixed_by_id("formula_summary"), max_types=12)
+        dynamic = render_dynamic(
+            book.question_type_detail, type_name="镜像法", type_list="镜像法",
+        )
+
+        assert "行内公式使用 $...$" in fixed
+        assert "禁止输出 HTML Entity" in fixed
+        assert "数学下标必须使用 _" in dynamic
 
 
 class TestPromptBookHelpers:

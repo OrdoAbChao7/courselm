@@ -189,6 +189,41 @@ class TestCollectDocs:
 
 
 class TestGenerateAll:
+    def test_complex_notebooklm_markdown_is_sanitized_before_write(self, tmp_path: Path) -> None:
+        cfg = make_cfg(tmp_path)
+        raw_dir = tmp_path / "output" / "电动力学" / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        raw_text = (
+            "波阻抗为：&#x20;$\\eta = \\frac{E\\_0}{120\\pi\\sqrt{\\epsilon\\_r\\mu\\_r}}$\n\n"
+            "$$\nE\\_0 = E\\_{xm}\\hat{e}\\_x\n\\vec{S}\\_{av}\n$$\n\n"
+            "**注意：** 中文说明与 [[Maxwell方程]]。"
+        )
+        (raw_dir / "formula_summary.md").write_text(raw_text, encoding="utf-8")
+
+        result = PipelineResult(
+            notebook_id="nb",
+            fixed_outcomes=[
+                PromptOutcome(
+                    key="formula_summary",
+                    title="公式总结",
+                    success=True,
+                    raw_file="formula_summary.md",
+                )
+            ],
+        )
+        written = generate_all(cfg, make_book(), "电动力学", result)
+        output = written[0].read_text(encoding="utf-8")
+
+        assert "&#x20;" not in output
+        assert r"\epsilon_r" in output
+        assert r"\mu_r" in output
+        assert r"E_0" in output
+        assert r"E_{xm}" in output
+        assert r"\vec{S}_{av}" in output
+        assert r"\hat{e}_x" in output
+        assert "[[Maxwell方程]]" in output
+        assert "**注意：**" in output
+
     def test_writes_files_and_layout(self, tmp_path: Path) -> None:
         cfg = make_cfg(tmp_path)
         seed_raw(tmp_path)
