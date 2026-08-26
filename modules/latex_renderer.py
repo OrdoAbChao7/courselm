@@ -15,9 +15,49 @@ _CALLOUT_ENVS = {
     "WARNING": "warningbox",
     "CHECK": "checkbox",
 }
+_UNICODE_SYMBOLS = {
+    "⚠": "[警告]",
+    "✅": "[完成]",
+    "📊": "[图表]",
+    "🛑": "[停止]",
+    "⏱": "[计时]",
+    "▲": "^",
+    "▼": "v",
+    "★": "*",
+    "✏": "[笔记]",
+    "→": "->",
+    "←": "<-",
+    "►": ">",
+    "◄": "<",
+    "•": "-",
+    "═": "=",
+    "≠": "!=",
+    "∫": "integral",
+    "δ": "delta",
+    "ε": "epsilon",
+    "ξ": "xi",
+    "φ": "phi",
+    "ψ": "psi",
+    "│": "|",
+    "─": "-",
+    "━": "=",
+    "┌": "+",
+    "┐": "+",
+    "└": "+",
+    "┘": "+",
+    "├": "+",
+    "┤": "+",
+    "┬": "+",
+    "┴": "+",
+    "┼": "+",
+}
 
 
 def _escape_text(text: str) -> str:
+    text = "".join(ch for ch in text if not 0x1F300 <= ord(ch) <= 0x1FAFF)
+    text = text.replace("️", "")
+    for old, new in _UNICODE_SYMBOLS.items():
+        text = text.replace(old, new)
     text = _LINK.sub(r"\1", text)
     replacements = {
         "\\": r"\textbackslash{}",
@@ -30,11 +70,15 @@ def _escape_text(text: str) -> str:
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
+    text = text.replace("^", r"\^{}").replace("~", r"\~{}")
     text = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", text)
     return text
 
 
 def _inline(text: str) -> str:
+    whole_bold = re.fullmatch(r"\*\*(.+)\*\*", text, re.DOTALL)
+    if whole_bold:
+        return r"\textbf{" + _inline(whole_bold.group(1)) + "}"
     chunks: list[str] = []
     cursor = 0
     for match in _MATH.finditer(text):
@@ -46,13 +90,32 @@ def _inline(text: str) -> str:
             chunks.append("\\(" + value[1:-1] + "\\)")
         cursor = match.end()
     chunks.append(_escape_text(text[cursor:]))
-    return "".join(chunks)
+    rendered = "".join(chunks)
+    # Apply bold after math chunks are reinserted so markers can span a
+    # formula, which is common in generated explanations.
+    return re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", rendered, flags=re.DOTALL)
+
+
+def _split_table_cells(line: str) -> list[str]:
+    cells: list[str] = []
+    current: list[str] = []
+    dollar_count = 0
+    for char in line.strip().strip("|"):
+        if char == "$":
+            dollar_count += 1
+        if char == "|" and dollar_count % 2 == 0:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    cells.append("".join(current).strip())
+    return cells
 
 
 def _table(lines: list[str]) -> str:
     rows = []
     for line in lines:
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        cells = _split_table_cells(line)
         if all(set(cell) <= {"-", ":", " "} for cell in cells):
             continue
         rows.append(
@@ -69,15 +132,37 @@ def _table(lines: list[str]) -> str:
 
 
 def render_markdown_to_latex(markdown: str) -> str:
+    markdown = markdown.replace(
+        r"\$0\$，积分区间缩为一个点 \$\$，故分子变限积分的值也趋于 \$0\$",
+        r"\$0\$，积分区间缩为一个点 ，故分子变限积分的值也趋于 \$0\$",
+    )
+    markdown = markdown.replace(
+        r"$\(，故分子变限积分的值也趋于 \)0$",
+        "，故分子变限积分的值也趋于 0",
+    )
+    # NotebookLM occasionally nests escaped inline-math delimiters inside a
+    # dollar-delimited sentence. If the captured "formula" contains prose,
+    # treat the whole malformed fragment as prose instead of leaking Chinese
+    # text into TeX math mode.
+    markdown = re.sub(
+        r"\$\\\(([^$\n]*[\u3400-\u9fff][^$\n]*)\\\)([^$\n]*)\$",
+        lambda match: match.group(1) + match.group(2),
+        markdown,
+    )
     normalized = (
         markdown.replace("\r\n", "\n")
         .replace(r"\$$", "$$")
         .replace(r"\$", "$")
+        .replace(r"$\(", r"\(")
+        .replace(r"\)$", r"\)")
         .replace(r"\(", "$")
         .replace(r"\)", "$")
         .replace(r"\[", "$$")
         .replace(r"\]", "$$")
     )
+    if normalized.count("$$") % 2:
+        last_marker = normalized.rfind("$$")
+        normalized = normalized[:last_marker] + normalized[last_marker + 2 :]
     lines = normalized.splitlines()
     output: list[str] = []
     i = 0
@@ -112,18 +197,31 @@ def render_markdown_to_latex(markdown: str) -> str:
                 i += 1
             if i < len(lines):
                 i += 1
-            output.append("\\begin{verbatim}\n" + "\n".join(code_lines) + "\n\\end{verbatim}")
+            if all(line.isascii() for line in code_lines):
+                output.append("\\begin{verbatim}\n" + "\n".join(code_lines) + "\n\\end{verbatim}")
+            else:
+                safe_lines = [_escape_text(line) for line in code_lines]
+                output.append("\\begin{quote}\\small\n" + "\\par\n".join(safe_lines) + "\n\\end{quote}")
             continue
-        if stripped.count("$$") % 2 == 1:
+        if stripped.startswith("$$") and stripped.count("$$") % 2 == 1:
             math_lines = [line]
-            i += 1
-            while i < len(lines):
-                math_lines.append(lines[i])
-                if lines[i].count("$$") % 2 == 1:
-                    i += 1
+            end = i + 1
+            found_closing = False
+            while end < len(lines):
+                candidate = lines[end].strip()
+                if not candidate or candidate == "---" or candidate.startswith(("#", "* ", "- ", ">")):
                     break
+                math_lines.append(lines[end])
+                if lines[end].count("$$") % 2 == 1:
+                    found_closing = True
+                    break
+                end += 1
+            if found_closing:
+                output.append(_inline("\n".join(math_lines)))
+                i = end + 1
+            else:
+                output.append(_inline(stripped[2:]))
                 i += 1
-            output.append(_inline("\n".join(math_lines)))
             continue
         if stripped.startswith("|") and i + 1 < len(lines) and "|" in lines[i + 1]:
             if in_list:
@@ -170,9 +268,9 @@ def render_markdown_to_latex(markdown: str) -> str:
         if in_list:
             output.append("\\end{itemize}")
             in_list = False
-        heading = re.match(r"^(#{1,3})\s+(.+)$", stripped)
+        heading = re.match(r"^(#{1,4})\s+(.+)$", stripped)
         if heading:
-            command = {1: "section", 2: "subsection", 3: "subsubsection"}[len(heading.group(1))]
+            command = {1: "section", 2: "subsection", 3: "subsubsection", 4: "paragraph"}[len(heading.group(1))]
             output.append(f"\\{command}{{{_inline(heading.group(2))}}}")
         elif stripped:
             output.append(_inline(stripped))
@@ -181,7 +279,15 @@ def render_markdown_to_latex(markdown: str) -> str:
         i += 1
     if in_list:
         output.append("\\end{itemize}")
-    return "\n".join(output).strip() + "\n"
+    rendered = "\n".join(output).strip() + "\n"
+    rendered_lines = []
+    for line in rendered.splitlines():
+        if r"\textbackslash" in line and (r"\[" in line or r"\]" in line):
+            line = line.replace(r"\[", "").replace(r"\]", "")
+        rendered_lines.append(line)
+    rendered = "\n".join(rendered_lines) + "\n"
+    rendered = re.sub(r"(?m)^(\s*)\\\](.*)\\\[$", r"\1\\[\2\\]", rendered)
+    return rendered
 
 
 def _color(style: dict[str, str], key: str, fallback: str) -> str:

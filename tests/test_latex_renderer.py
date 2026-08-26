@@ -62,6 +62,13 @@ def test_render_markdown_uses_inline_math_inside_tables() -> None:
     assert "\\[E=mc^2\\]" not in rendered
 
 
+def test_render_markdown_keeps_pipes_inside_math_table_cells() -> None:
+    rendered = render_markdown_to_latex("| 题目 | 结论 |\n| --- | --- |\n| $|x-1|$ | 分段计算 |")
+
+    assert "|x-1|" in rendered
+    assert rendered.count(" & ") == 2
+
+
 def test_render_markdown_drops_frontmatter_and_renders_callouts() -> None:
     source = "---\ncourse: 电磁场\ntags:\n- 复习\n---\n\n> 来源：知识结构.md\n\n正文"
 
@@ -96,6 +103,34 @@ def test_render_markdown_wraps_fenced_code_as_verbatim() -> None:
     assert "\\begin{verbatim}" in rendered
     assert "[1] ---> [2]" in rendered
     assert "\\end{verbatim}" in rendered
+
+
+def test_render_markdown_makes_unicode_diagrams_latex_safe() -> None:
+    source = """```text
+[考前路径] ── 重点复习
+⚠️ 不要漏写条件
+```"""
+
+    rendered = render_markdown_to_latex(source)
+
+    assert "\\begin{quote}" in rendered
+    assert "考前路径" in rendered
+    assert "⚠️" not in rendered
+    assert "──" not in rendered
+
+
+def test_render_markdown_downgrades_unclosed_display_math() -> None:
+    rendered = render_markdown_to_latex("结果为 $$x+1，后面仍是中文说明。")
+
+    assert "$$" not in rendered
+    assert "中文说明" in rendered
+
+
+def test_render_markdown_escapes_special_heading_symbols() -> None:
+    rendered = render_markdown_to_latex("# __(1^_infty__)型极限 📅")
+
+    assert "\\^{}" in rendered
+    assert "📅" not in rendered
 
 
 def test_render_markdown_converts_page_break_marker() -> None:
