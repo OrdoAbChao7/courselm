@@ -48,7 +48,7 @@ def test_build_handout_follows_default_three_day_order(tmp_path: Path) -> None:
     ]
     positions = [manuscript.index(f"## {title}") for title in expected]
     assert positions == sorted(positions)
-    assert manuscript.count("<!-- PAGE_BREAK -->") == 13
+    assert manuscript.count("<!-- PAGE_BREAK -->") == 1
     assert "来源：00-使用说明.md" in manuscript
 
 

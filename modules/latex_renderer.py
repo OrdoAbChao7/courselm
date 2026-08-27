@@ -93,7 +93,10 @@ def _inline(text: str) -> str:
     rendered = "".join(chunks)
     # Apply bold after math chunks are reinserted so markers can span a
     # formula, which is common in generated explanations.
-    return re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", rendered, flags=re.DOTALL)
+    rendered = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", rendered, flags=re.DOTALL)
+    rendered = re.sub(r"\*\((.+?)\)\*", r"\\textit{\1}", rendered, flags=re.DOTALL)
+    rendered = re.sub(r"\*\s+(.+?)\s+\*", r"\\textit{\1}", rendered, flags=re.DOTALL)
+    return re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\\textit{\1}", rendered)
 
 
 def _split_table_cells(line: str) -> list[str]:
@@ -170,6 +173,14 @@ def render_markdown_to_latex(markdown: str) -> str:
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
+        if stripped in {"<details>", "</details>"}:
+            i += 1
+            continue
+        summary = re.fullmatch(r"<summary>(.*?)</summary>", stripped, re.IGNORECASE)
+        if summary:
+            output.append(r"\textbf{" + _inline(summary.group(1)) + "}")
+            i += 1
+            continue
         if stripped == "<!-- PAGE_BREAK -->":
             if in_list:
                 output.append("\\end{itemize}")
@@ -306,7 +317,14 @@ def write_latex_document(
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     style = style or {}
+    academic = style.get("layout") == "academic"
     body = render_markdown_to_latex(manuscript)
+    box_options = (
+        "breakable,colback=white,colframe=black!35,boxrule=0.3pt,"
+        "fonttitle=\\bfseries"
+        if academic
+        else "breakable,colback=primary!5,colframe=primary,fonttitle=\\bfseries"
+    )
     document = (
         "\\documentclass[UTF8,a4paper,12pt]{ctexart}\n"
         "\\usepackage{amsmath,amssymb,booktabs,geometry}\n"
@@ -316,15 +334,16 @@ def write_latex_document(
         "\\geometry{margin=2.2cm}\n"
         "\\setlength{\\headheight}{15pt}\n"
         "\\setlength{\\parindent}{2em}\n"
+        "\\setlength{\\parskip}{0.35em}\n"
         f"\\definecolor{{primary}}{{HTML}}{{{_color(style, 'primary_color', '1F4E79')}}}\n"
         f"\\definecolor{{emphasis}}{{HTML}}{{{_color(style, 'emphasis_color', 'E67E22')}}}\n"
         f"\\definecolor{{warning}}{{HTML}}{{{_color(style, 'warning_color', 'B42318')}}}\n"
         f"\\definecolor{{success}}{{HTML}}{{{_color(style, 'success_color', '2E7D32')}}}\n"
         f"\\definecolor{{muted}}{{HTML}}{{{_color(style, 'muted_color', '6B7280')}}}\n"
-        "\\newtcolorbox{importantbox}[1][]{breakable,colback=primary!5,colframe=primary,fonttitle=\\bfseries,#1}\n"
-        "\\newtcolorbox{tipbox}[1][]{breakable,colback=emphasis!6,colframe=emphasis,fonttitle=\\bfseries,#1}\n"
-        "\\newtcolorbox{warningbox}[1][]{breakable,colback=warning!5,colframe=warning,fonttitle=\\bfseries,#1}\n"
-        "\\newtcolorbox{checkbox}[1][]{breakable,colback=success!5,colframe=success,fonttitle=\\bfseries,#1}\n"
+        f"\\newtcolorbox{{importantbox}}[1][]{{{box_options},#1}}\n"
+        f"\\newtcolorbox{{tipbox}}[1][]{{{box_options},#1}}\n"
+        f"\\newtcolorbox{{warningbox}}[1][]{{{box_options},#1}}\n"
+        f"\\newtcolorbox{{checkbox}}[1][]{{{box_options},#1}}\n"
         "\\pagestyle{fancy}\n\\fancyhf{}\n"
         f"\\fancyhead[L]{{{_escape_text(title)}}}\n"
         "\\fancyhead[R]{\\nouppercase{\\leftmark}}\n"

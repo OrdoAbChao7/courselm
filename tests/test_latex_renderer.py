@@ -47,6 +47,20 @@ def test_write_latex_document_uses_chinese_document_template(tmp_path: Path) -> 
     assert "\\section{复习}" in text
 
 
+def test_write_latex_document_supports_academic_layout(tmp_path: Path) -> None:
+    path = write_latex_document(
+        "# 复习\n\n正文",
+        tmp_path / "academic.tex",
+        "数学分析讲义",
+        style={"layout": "academic"},
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "\\setlength{\\parskip}{0.35em}" in text
+    assert "colback=white" in text
+    assert "colframe=black!35" in text
+
+
 def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
     rendered = render_markdown_to_latex("| 题型 | 频率 |\n| --- | --- |\n| 镜像法 | 高 |")
 
@@ -161,3 +175,32 @@ def test_render_markdown_converts_semantic_callouts() -> None:
     assert "\\begin{warningbox}[title={易错}]" in rendered
     assert "\\begin{checkbox}[title={30 秒自测}]" in rendered
     assert "\\(E=mc^2\\)" in rendered
+
+
+def test_render_markdown_converts_collapsible_answer_markup() -> None:
+    rendered = render_markdown_to_latex(
+        "<details>\n<summary>点击查看答案</summary>\n\n答案内容\n\n</details>"
+    )
+
+    assert "<details>" not in rendered
+    assert "<summary>" not in rendered
+    assert "\\textbf{点击查看答案}" in rendered
+    assert "答案内容" in rendered
+
+
+def test_render_markdown_converts_parenthesized_italics() -> None:
+    rendered = render_markdown_to_latex("*(这是补充说明)*")
+
+    assert "\\textit{这是补充说明}" in rendered
+
+
+def test_render_markdown_converts_spaced_asterisk_italics() -> None:
+    rendered = render_markdown_to_latex("说明：* 为什么这样做 *")
+
+    assert "\\textit{为什么这样做}" in rendered
+
+
+def test_render_markdown_converts_bare_asterisk_italics() -> None:
+    rendered = render_markdown_to_latex("说明：*为什么这样做*")
+
+    assert "\\textit{为什么这样做}" in rendered
