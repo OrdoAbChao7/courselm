@@ -1,7 +1,7 @@
-# CourseLM 三天冲刺讲义流水线
+# CourseLM 课程结构驱动期末复习讲义流水线
 
-- 当前版本：v3
-- 更新日期：2026-08-27
+- 当前版本：v4 / generation schema 2
+- 更新日期：2026-09-01
 - 默认受众：基础薄弱、距离期末考试三天的学生
 
 ## 1. 产品目标
@@ -12,23 +12,14 @@ CourseLM 不再默认追求“完整课程笔记”，而是生成一份低门�
 
 ## 2. 默认内容模型
 
-一次全新生成包含 12 个固定模块和 N 个动态题型模块，NotebookLM 对话量为 `12 + N`，其中 N 受 `prompt_runner.max_question_types` 限制。
+一次全新生成先得到课程结构 JSON，再生成绪论、动态章节和三个附录。章节由课程资料决定，不在模板中写死。
 
 ```text
-00-使用说明.md
-01-考前三天学习规划.md
-02-考试地图.md
-03-零基础补给站.md
-04-一页知识骨架.md
-05-核心考点卡.md
-06-公式工具箱.md
-07-题型识别地图.md
-08-高频题型精讲/
-  <题型名>.md
-09-易错点诊断室.md
-10-最小训练集.md
-11-考前速记.md
-12-综合自测与补救路线.md
+00-绪论.md
+chapters/<序号>-<章节名>.md
+appendix/01-重要公式汇总.md
+appendix/02-典型题型索引.md
+appendix/03-考前复习提要.md
 ```
 
 三天不是简单按页数平均切分，而是按认知任务组织：
@@ -39,18 +30,19 @@ CourseLM 不再默认追求“完整课程笔记”，而是生成一份低门�
 
 每个模块使用短段落、步骤化表达、先结论后解释，并通过 Obsidian callout 表达教学语义：`IMPORTANT` 表示必须掌握，`TIP` 表示解题捷径，`WARNING` 表示易错点，`CHECK` 表示即时自测。
 
-## 3. 两阶段生成
+## 3. 课程结构驱动生成
 
 ```text
 扫描课程资料 → 创建或复用 NotebookLM Notebook → 上传资料
-  → 阶段一：依次执行 12 个固定 Prompt
-  → 从“题型识别地图”解析题型清单
-  → 阶段二：每个题型执行一次动态 Prompt
+  → 课程结构分析 JSON
+  → 绪论
+  → 逐章生成（核心知识、题型、例题、练习、易错点）
+  → 三个附录
   → 统一清洗 Markdown → 写入 output 与 Obsidian
   → 按讲义模板组装 manuscript.md → 渲染 main.tex → XeLaTeX 导出 PDF
 ```
 
-固定 Prompt 由 `config/prompts.yaml` 管理。保留 `knowledge_structure`、`formula_summary` 和 `question_type_summary` 等稳定 ID，以兼容定向重跑与既有自定义配置。动态模板 `question_type_detail` 使用 `{type_name}` 和完整题型清单作为上下文。
+Prompt 由 `config/prompts.yaml` 管理，使用 `planning/global/dynamic` 三层 Schema。课程结构使用 JSON 解析并校验；章节和附录各自拥有独立缓存。
 
 `--fresh` 会新建 Notebook 并清空生成缓存。升级到 v3 目录后第一次生成必须使用该参数，否则旧缓存不会自动拥有新模块。
 
@@ -72,8 +64,8 @@ CourseLM 不再默认追求“完整课程笔记”，而是生成一份低门�
 - Notebook ID 和运行状态保存在 `output/<课程>/state.json`。
 - 固定 Prompt 按 ID 缓存；动态题型按清洗后的题型名缓存。
 - 普通 `generate` 复用已有成功结果，减少对话消耗。
-- `--prompts <id>` 可定向重跑固定模块；依赖题型清单的动态阶段仍以最新的 `question_type_summary` 为准。
-- 单个 Prompt 失败会按配置重试，已成功的原始回答立即落盘。
+- `--stage outline|introduction|appendices` 和 `--chapter N` 可定向调试。
+- 单个章节失败会按配置重试，已成功的原始回答立即落盘；新缓存位于 `raw/v2/`。
 
 ## 6. Markdown、LaTeX 与 PDF
 
@@ -93,7 +85,7 @@ PDF 是待人工审阅的商业讲义初稿。正式出售前必须检查事实�
 
 - `file_manager`：扫描课程资料并校验来源文件。
 - `notebooklm`：登录、Notebook 复用、上传和提问的薄适配层。
-- `prompts` / `prompt_runner`：Prompt 校验、两阶段编排、题型解析、缓存与重试。
+- `prompts` / `prompt_runner`：Prompt 校验、课程结构编排、章节解析、缓存与重试。
 - `markdown_generator`：原始回答到安全 Obsidian Markdown。
 - `obsidian_sync`：在 Vault 根目录内安全同步。
 - `handout_template`：默认模板与课程级覆盖的加载和校验。
@@ -103,7 +95,7 @@ PDF 是待人工审阅的商业讲义初稿。正式出售前必须检查事实�
 
 ## 8. 验证标准
 
-自动化测试覆盖配置校验、Prompt 契约、题型解析、断点缓存、Markdown 清洗、模板覆盖、目录组装和 LaTeX 语义。发布前还必须执行真实闭环：
+自动化测试覆盖配置校验、Prompt 契约、课程结构解析、断点缓存、Markdown 清洗、模板覆盖、目录组装和 LaTeX 语义。发布前还必须执行真实闭环：
 
 ```powershell
 .venv\Scripts\courselm generate <课程名> --fresh

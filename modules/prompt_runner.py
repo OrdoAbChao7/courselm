@@ -1,24 +1,14 @@
-"""两阶段 Prompt 编排：阶段一固定 Prompt → 题型解析 → 阶段二动态 Prompt。
-
-职责边界：
-- 题型解析（parse_question_types）：纯文本解析，独立可测
-- 编排（run_pipeline）：状态管理（state.json）、raw 缓存断点续跑、
-  增量上传、失败重试与汇总
-
-状态与缓存（output/<课程>/ 下）：
-    state.json   —— notebook_id + 已上传文件相对路径清单（增量上传依据）
-    raw/<id>.md  —— 固定 Prompt 回答缓存
-    raw/题型_<名>.md —— 题型文件回答缓存
-"""
+"""NotebookLM v2 pipeline: outline -> introduction -> chapters -> appendices."""
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from modules.config import AppConfig
@@ -26,208 +16,143 @@ if TYPE_CHECKING:
     from modules.notebooklm import NotebookLMService, UploadReport
     from modules.prompts import PromptBook
 
-# --------------------------------------------------------------- 异常
+GENERATION_SCHEMA_VERSION = 2
+_ILLEGAL_FN_CHARS = re.compile(r'[\\/:*?"<>|]')
+
 
 class PromptRunnerError(Exception):
     """编排层错误基类。"""
 
 
-class QuestionTypeParseError(PromptRunnerError):
-    """题型总结中无法解析出题型清单。"""
+class OutlineParseError(PromptRunnerError):
+    """课程结构 JSON 无法解析或不满足契约。"""
 
 
-# --------------------------------------------------------------- 题型名清洗
+class ChapterPlan(BaseModel):
+    index: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=100)
+    topics: list[str] = Field(min_length=1)
 
-# Windows 文件名非法字符
-_ILLEGAL_FN_CHARS = re.compile(r'[\\/:*?"<>|]')
-_MAX_TYPE_NAME_LEN = 40
+    @field_validator("title")
+    @classmethod
+    def safe_title(cls, value: str) -> str:
+        value = _ILLEGAL_FN_CHARS.sub("_", value).strip().strip(".")
+        if not value or value in {".", ".."}:
+            raise ValueError("章节名称清洗后不能为空")
+        return value
 
-
-def sanitize_type_name(name: str) -> str:
-    """清洗题型名 → 安全文件名片段：去非法字符与首尾空白，截断长度。"""
-    cleaned = _ILLEGAL_FN_CHARS.sub("_", name).strip().strip(".").strip()
-    return cleaned[:_MAX_TYPE_NAME_LEN]
-
-
-# --------------------------------------------------------------- 题型清单解析
-
-_TABLE_ROW = re.compile(r"^\s*\|(.+)\|\s*$")
-_NUMBERED = re.compile(r"^\s*(?:\d+[.、)．]|[一二三四五六七八九十]+[、.．])\s*(\S.*)$")
-_ORDINAL_CELL = re.compile(r"^[\d一二三四五六七八九十]+$")
-
-
-def _split_row(line: str) -> list[str]:
-    return [c.strip() for c in line.strip().strip("|").split("|")]
+    @field_validator("topics")
+    @classmethod
+    def clean_topics(cls, value: list[str]) -> list[str]:
+        cleaned = [str(item).strip() for item in value if str(item).strip()]
+        if not cleaned:
+            raise ValueError("章节主题不能为空")
+        return list(dict.fromkeys(cleaned))
 
 
-def _is_separator(cells: list[str]) -> bool:
-    return bool(cells) and all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c) and any(cells)
+class CourseOutline(BaseModel):
+    course_name: str = Field(min_length=1)
+    chapters: list[ChapterPlan] = Field(min_length=1)
 
 
-def _parse_tables(text: str) -> list[list[list[str]]]:
-    """提取所有 markdown 表格（含表头），返回每表的行列表。"""
-    tables: list[list[list[str]]] = []
-    current: list[list[str]] = []
-    for line in text.splitlines():
-        m = _TABLE_ROW.match(line)
-        if m:
-            current.append(_split_row(m.group(1)))
-        elif current:
-            tables.append(current)
-            current = []
-    if current:
-        tables.append(current)
-    return tables
-
-
-def _clean_cell(cell: str) -> str:
-    """去掉单元格里的粗体/反引号包裹。"""
-    return cell.replace("**", "").replace("`", "").strip()
-
-
-def _extract_from_tables(text: str) -> list[str]:
-    """策略①②：约定表格（题型名称列）→ 任意表格（首非序号列）。
-
-    表头判定：markdown 规范中表头后必跟分隔行；无分隔行时无法确认
-    表头，全部行视为数据行。
-    """
-    tables = _parse_tables(text)
-    # 策略①：表头含"题型名称"
-    for table in tables:
-        if not table:
+def _extract_json_object(text: str) -> str:
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        return fenced.group(1)
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            _, end = decoder.raw_decode(text[match.start():])
+            return text[match.start():match.start() + end]
+        except json.JSONDecodeError:
             continue
-        header = [_clean_cell(c) for c in table[0]]
-        if any("题型名称" in h for h in header):
-            idx = next(i for i, h in enumerate(header) if "题型名称" in h)
-            names = [
-                _clean_cell(row[idx])
-                for row in table[1:]
-                if len(row) > idx and not _is_separator(row)
-            ]
-            names = [n for n in names if n]
-            if names:
-                return names
-    # 策略②：任意 ≥2 列表格，取首个非序号列
-    for table in tables:
-        if len(table) >= 2 and _is_separator(table[1]):
-            rows = table[2:]  # 规范表格：跳过表头与分隔行
-        else:
-            rows = table      # 无分隔行：无法确认表头，全部当数据行
-        rows = [r for r in rows if r and not _is_separator(r)]
-        if not rows:
-            continue
-        width = min(len(r) for r in rows)
-        if width < 2:
-            continue
-        idx = 0 if not _ORDINAL_CELL.match(_clean_cell(rows[0][0] or "")) else 1
-        if idx >= width:
-            continue
-        names = [
-            _clean_cell(r[idx]) for r in rows
-            if len(r) > idx and _clean_cell(r[idx])
-        ]
-        if names:
-            return names
-    return []
+    raise OutlineParseError("未找到有效的课程结构 JSON")
 
 
-def _extract_numbered(text: str) -> list[str]:
-    """策略③：编号行（1. xxx / 一、xxx），限长且排除含句内标点的句子。"""
-    names: list[str] = []
-    for line in text.splitlines():
-        m = _NUMBERED.match(line)
-        if not m:
-            continue
-        cand = m.group(1).strip().strip("*").strip()
-        # 题型名约定 ≤10 字；容忍到 20 字。含句内标点或超长视为正文句子
-        if not cand or len(cand) > 20:
-            continue
-        if any(ch in cand for ch in "，,；;：:。！？!?"):
-            continue
-        names.append(cand)
-    return names
+def parse_course_outline(text: str) -> CourseOutline:
+    try:
+        payload = json.loads(_extract_json_object(text))
+        outline = CourseOutline.model_validate(payload)
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise OutlineParseError(f"课程结构 JSON 校验失败：{exc}") from exc
+    unique: dict[int, ChapterPlan] = {}
+    for chapter in sorted(outline.chapters, key=lambda item: item.index):
+        unique.setdefault(chapter.index, chapter)
+    chapters = [chapter.model_copy(update={"index": i}) for i, chapter in enumerate(unique.values(), 1)]
+    if not chapters:
+        raise OutlineParseError("课程结构至少需要一个有效章节")
+    return outline.model_copy(update={"chapters": chapters})
 
 
-def parse_question_types(text: str, max_types: int) -> list[str]:
-    """从题型总结回答中解析题型清单。
+def _slug(value: str, limit: int = 60) -> str:
+    value = _ILLEGAL_FN_CHARS.sub("_", value).strip().strip(".")
+    value = re.sub(r"\s+", "_", value)
+    return (value or "未命名")[:limit]
 
-    解析分级：① 约定格式的表格 → ② 任意 markdown 表格 → ③ 编号行。
-    结果经清洗、去重、截断到 max_types；无法解析抛 QuestionTypeParseError。
-    """
-    raw: list[str] = []
-    for extractor in (_extract_from_tables, _extract_numbered):
-        raw = extractor(text)
-        if raw:
-            break
-
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for name in raw:
-        n = sanitize_type_name(name)
-        if n and n not in seen and not _ORDINAL_CELL.match(n):
-            seen.add(n)
-            cleaned.append(n)
-        if len(cleaned) >= max_types:
-            break
-
-    if not cleaned:
-        raise QuestionTypeParseError(
-            "无法从题型总结中解析出题型清单（未找到可识别的表格或编号列表）。"
-            "请用 --prompts question_type_summary 单独重跑该 Prompt 后重试"
-        )
-    return cleaned
-
-
-# --------------------------------------------------------------- 状态与结果
 
 class PipelineState(BaseModel):
-    """跨运行持久化的流水线状态。"""
-
+    generation_schema_version: int = GENERATION_SCHEMA_VERSION
     notebook_id: str | None = None
-    uploaded_files: list[str] = Field(default_factory=list)  # 相对课程根的 posix 路径
+    uploaded_files: list[str] = Field(default_factory=list)
 
 
 class PromptOutcome(BaseModel):
-    """单个 Prompt 的执行结果。"""
-
-    key: str            # 缓存键：固定 id 或 题型_<名>
+    key: str
     title: str
     success: bool
     from_cache: bool = False
     error: str | None = None
-    raw_file: str = ""  # 相对 raw/ 的文件名
+    raw_file: str = ""
 
 
 class PipelineResult(BaseModel):
     notebook_id: str
-    fixed_outcomes: list[PromptOutcome] = Field(default_factory=list)
-    question_types: list[str] = Field(default_factory=list)
-    type_outcomes: list[PromptOutcome] = Field(default_factory=list)
+    outline: CourseOutline | None = None
+    outline_outcome: PromptOutcome | None = None
+    introduction_outcome: PromptOutcome | None = None
+    chapter_outcomes: list[PromptOutcome] = Field(default_factory=list)
+    appendix_outcomes: list[PromptOutcome] = Field(default_factory=list)
+
+    @property
+    def all_outcomes(self) -> list[PromptOutcome]:
+        return [o for o in [self.outline_outcome, self.introduction_outcome] if o] + self.chapter_outcomes + self.appendix_outcomes
 
     @property
     def failures(self) -> list[PromptOutcome]:
-        return [o for o in (*self.fixed_outcomes, *self.type_outcomes) if not o.success]
+        return [outcome for outcome in self.all_outcomes if not outcome.success]
 
 
-# --------------------------------------------------------------- 编排
-
-async def _ask_with_retry(
-    svc: NotebookLMService, notebook_id: str, question: str, retry: int,
-) -> str:
-    """带重试的提问：网络类失败重试，认证类失败直接上抛（中断流水线）。"""
+async def _ask_with_retry(svc: NotebookLMService, notebook_id: str, question: str, retry: int) -> str:
     from modules.notebooklm import NotebookLMAuthError
 
-    last_err: Exception | None = None
+    last_error: Exception | None = None
     for attempt in range(retry + 1):
         try:
             return await svc.ask(notebook_id, question)
         except NotebookLMAuthError:
             raise
-        except Exception as e:
-            last_err = e
+        except Exception as exc:
+            last_error = exc
             if attempt < retry:
-                logger.warning("提问失败（{}），重试 {}/{}", e, attempt + 1, retry)
-    raise last_err  # type: ignore[misc]
+                logger.warning("提问失败（{}），重试 {}/{}", exc, attempt + 1, retry)
+    raise last_error  # type: ignore[misc]
+
+
+def _load_state(path: Path, fresh: bool) -> PipelineState:
+    if fresh or not path.is_file():
+        return PipelineState()
+    try:
+        state = PipelineState.model_validate_json(path.read_text(encoding="utf-8"))
+        if state.generation_schema_version != GENERATION_SCHEMA_VERSION:
+            return PipelineState()
+        return state
+    except Exception as exc:
+        logger.warning("state.json 解析失败，视为无状态：{}", exc)
+        return PipelineState()
+
+
+def _save_state(path: Path, state: PipelineState) -> None:
+    path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
 
 
 async def run_pipeline(
@@ -236,150 +161,104 @@ async def run_pipeline(
     course_name: str,
     manifest: CourseManifest,
     svc: NotebookLMService,
-    only_fixed: list[str] | None = None,
+    *,
+    stage: Literal["outline", "introduction", "appendices"] | None = None,
+    chapter: int | None = None,
     fresh: bool = False,
 ) -> PipelineResult:
-    """执行完整两阶段流水线。
-
-    only_fixed：仅执行指定 id 的固定 Prompt（调试模式，跳过阶段二）。
-    fresh：清空 raw 缓存与上传状态，重跑（Notebook 仍按标题复用）。
-    """
-    from modules.prompts import render_dynamic, render_fixed
+    """执行 v2 流程；stage/chapter 用于开发调试和断点恢复。"""
+    from modules.prompts import render_appendix, render_chapter, render_introduction, render_outline
 
     out_dir = cfg.paths.output_dir / course_name
-    raw_dir = out_dir / "raw"
+    raw_dir = out_dir / "raw" / f"v{GENERATION_SCHEMA_VERSION}"
+    chapters_dir = raw_dir / "chapters"
+    appendices_dir = raw_dir / "appendices"
+    for directory in (raw_dir, chapters_dir, appendices_dir):
+        directory.mkdir(parents=True, exist_ok=True)
     state_path = out_dir / "state.json"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
+    state = _load_state(state_path, fresh)
     if fresh:
-        logger.info("--fresh：清空缓存与状态，重新执行")
-        for p in raw_dir.glob("*.md"):
-            p.unlink()
-        state = PipelineState()
-    else:
-        state = _load_state(state_path)
+        for path in raw_dir.rglob("*"):
+            if path.is_file():
+                path.unlink()
 
-    # --- Notebook 复用/新建（按标题；state 仅作记录） ---
     notebook_id = await svc.get_or_create_notebook(course_name)
     state.notebook_id = notebook_id
-    _save_state(state_path, state)
-
-    # --- 增量上传：仅上传未上传过的文件 ---
     rel_files = [f.path.relative_to(manifest.root).as_posix() for f in manifest.files]
-    pending = [f for f, rel in zip(manifest.files, rel_files) if rel not in set(state.uploaded_files)]
+    uploaded = set() if fresh else set(state.uploaded_files)
+    pending = [f for f, rel in zip(manifest.files, rel_files) if rel not in uploaded]
     if pending:
-        logger.info("需上传资料 {} 个（复用已上传 {} 个）", len(pending), len(rel_files) - len(pending))
-        partial_manifest = manifest.model_copy(
-            update={"files": pending, "total_size_bytes": sum(f.size_bytes for f in pending)}
-        )
-        report: UploadReport = await svc.upload_sources(notebook_id, partial_manifest)
-        done_rels = {
-            rel for rel, f in zip(rel_files, manifest.files)
-            if f.path.name in set(report.uploaded)
-        }
-        state.uploaded_files.extend(sorted(done_rels))
+        partial = manifest.model_copy(update={"files": pending, "total_size_bytes": sum(f.size_bytes for f in pending)})
+        report: UploadReport = await svc.upload_sources(notebook_id, partial)
+        uploaded.update(rel for rel, f in zip(rel_files, manifest.files) if f in pending and f.path.name in set(report.uploaded))
+        state.uploaded_files = sorted(uploaded)
         _save_state(state_path, state)
     else:
-        logger.info("全部 {} 个资料此前已上传，跳过上传", len(rel_files))
+        _save_state(state_path, state)
 
-    # --- 阶段一：固定 Prompt ---
     result = PipelineResult(notebook_id=notebook_id)
-    summary_answer: str | None = None
-    for p in book.fixed:
-        if only_fixed is not None and p.id not in only_fixed:
-            continue
-        outcome = await _run_fixed_prompt(
-            raw_dir, svc, notebook_id, p, cfg.prompt_runner.max_question_types,
-            cfg.prompt_runner.retry, fresh,
-        )
-        result.fixed_outcomes.append(outcome)
-        if p.id == "question_type_summary" and outcome.success:
-            summary_answer = (raw_dir / f"{p.id}.md").read_text(encoding="utf-8")
-        if not outcome.success:
-            logger.error("固定 Prompt「{}」执行失败：{}", p.title, outcome.error)
-
-    if only_fixed is not None:
-        logger.info("调试模式（--prompts）：跳过阶段二")
+    outline_path = raw_dir / "outline.json"
+    outline: CourseOutline | None = None
+    if outline_path.is_file() and not fresh:
+        try:
+            outline = CourseOutline.model_validate_json(outline_path.read_text(encoding="utf-8"))
+            result.outline_outcome = PromptOutcome(key="course_outline", title=book.planning.course_outline.title, success=True, from_cache=True, raw_file="outline.json")
+        except Exception:
+            outline = None
+    if outline is None:
+        try:
+            answer = await _ask_with_retry(svc, notebook_id, render_outline(book.planning.course_outline), cfg.prompt_runner.retry)
+            outline = parse_course_outline(answer)
+            outline_path.write_text(outline.model_dump_json(indent=2), encoding="utf-8")
+            result.outline_outcome = PromptOutcome(key="course_outline", title=book.planning.course_outline.title, success=True, raw_file="outline.json")
+        except Exception as exc:
+            result.outline_outcome = PromptOutcome(key="course_outline", title=book.planning.course_outline.title, success=False, error=str(exc))
+            return result
+    result.outline = outline
+    if stage == "outline":
         return result
 
-    # --- 题型解析 ---
-    if summary_answer is None:
-        raise PromptRunnerError(
-            "题型总结 Prompt 未成功执行，无法进入阶段二；"
-            "请先重跑：--prompts question_type_summary"
-        )
-    try:
-        types = parse_question_types(summary_answer, cfg.prompt_runner.max_question_types)
-    except QuestionTypeParseError:
-        raise
-    result.question_types = types
-    logger.info("解析出 {} 类题型：{}", len(types), "、".join(types))
+    outline_text = json.dumps(outline.model_dump(), ensure_ascii=False, indent=2)
+    intro_path = raw_dir / "introduction.md"
+    if intro_path.is_file() and not fresh:
+        result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=True, from_cache=True, raw_file="introduction.md")
+    else:
+        try:
+            answer = await _ask_with_retry(svc, notebook_id, render_introduction(book.global_prompts.introduction, course_name, outline_text), cfg.prompt_runner.retry)
+            intro_path.write_text(answer, encoding="utf-8")
+            result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=True, raw_file="introduction.md")
+        except Exception as exc:
+            result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=False, error=str(exc))
+    if stage == "introduction":
+        return result
 
-    # --- 阶段二：题型详解 ---
-    type_list_str = "、".join(types)
-    detail = book.question_type_detail
-    for t in types:
-        key = f"题型_{t}"
-        raw_file = raw_dir / f"{key}.md"
-        if raw_file.exists() and not fresh:
-            logger.info("缓存命中，跳过：{}", key)
-            result.type_outcomes.append(
-                PromptOutcome(key=key, title=t, success=True, from_cache=True, raw_file=f"{key}.md")
-            )
+    selected = [item for item in outline.chapters if chapter is None or item.index == chapter]
+    if chapter is not None and not selected:
+        raise PromptRunnerError(f"不存在第 {chapter} 章")
+    for item in selected:
+        path = chapters_dir / f"{item.index:02d}-{_slug(item.title)}.md"
+        key = f"chapter_{item.index:02d}"
+        if path.is_file() and not fresh:
+            result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, from_cache=True, raw_file=f"chapters/{path.name}"))
             continue
-        question = render_dynamic(detail, type_name=t, type_list=type_list_str)
         try:
-            answer = await _ask_with_retry(svc, notebook_id, question, cfg.prompt_runner.retry)
-            raw_file.write_text(answer, encoding="utf-8")
-            logger.success("题型详解完成：{}", t)
-            result.type_outcomes.append(
-                PromptOutcome(key=key, title=t, success=True, raw_file=f"{key}.md")
-            )
-        except Exception as e:
-            logger.error("题型「{}」执行失败：{}", t, e)
-            result.type_outcomes.append(
-                PromptOutcome(key=key, title=t, success=False, error=str(e))
-            )
+            answer = await _ask_with_retry(svc, notebook_id, render_chapter(book.dynamic.chapter, item.index, item.title, "、".join(item.topics), outline_text), cfg.prompt_runner.retry)
+            path.write_text(answer, encoding="utf-8")
+            result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, raw_file=f"chapters/{path.name}"))
+        except Exception as exc:
+            result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=False, error=str(exc)))
 
+    if chapter is not None or stage == "chapters":
+        return result
+    for prompt in book.appendices:
+        path = appendices_dir / f"{prompt.id}.md"
+        if path.is_file() and not fresh:
+            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=True, from_cache=True, raw_file=f"appendices/{path.name}"))
+            continue
+        try:
+            answer = await _ask_with_retry(svc, notebook_id, render_appendix(prompt, outline_text), cfg.prompt_runner.retry)
+            path.write_text(answer, encoding="utf-8")
+            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=True, raw_file=f"appendices/{path.name}"))
+        except Exception as exc:
+            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=False, error=str(exc)))
     return result
-
-
-async def _run_fixed_prompt(
-    raw_dir: Path,
-    svc: NotebookLMService,
-    notebook_id: str,
-    prompt,  # FixedPrompt
-    max_types: int,
-    retry: int,
-    fresh: bool,
-) -> PromptOutcome:
-    from modules.prompts import render_fixed
-
-    raw_file = raw_dir / f"{prompt.id}.md"
-    if raw_file.exists() and not fresh:
-        logger.info("缓存命中，跳过：{}", prompt.id)
-        return PromptOutcome(
-            key=prompt.id, title=prompt.title, success=True,
-            from_cache=True, raw_file=f"{prompt.id}.md",
-        )
-    question = render_fixed(prompt, max_types=max_types)
-    try:
-        answer = await _ask_with_retry(svc, notebook_id, question, retry)
-        raw_file.write_text(answer, encoding="utf-8")
-        logger.success("固定 Prompt 完成：{}", prompt.title)
-        return PromptOutcome(key=prompt.id, title=prompt.title, success=True, raw_file=f"{prompt.id}.md")
-    except Exception as e:
-        return PromptOutcome(key=prompt.id, title=prompt.title, success=False, error=str(e))
-
-
-def _load_state(path: Path) -> PipelineState:
-    if path.is_file():
-        try:
-            return PipelineState.model_validate_json(path.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.warning("state.json 解析失败，视为无状态：{}", e)
-    return PipelineState()
-
-
-def _save_state(path: Path, state: PipelineState) -> None:
-    path.write_text(state.model_dump_json(indent=2), encoding="utf-8")

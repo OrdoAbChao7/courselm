@@ -53,7 +53,6 @@ class NetworkConfig(BaseModel):
 
 class PromptRunnerConfig(BaseModel):
     retry: int = Field(ge=0)
-    max_question_types: int = Field(gt=0)
 
 
 class MarkdownConfig(BaseModel):

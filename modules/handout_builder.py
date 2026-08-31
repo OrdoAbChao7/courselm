@@ -32,6 +32,11 @@ def _section(title: str, source: str, content: str) -> str:
     return f"## {title}\n\n> 来源：{source}\n\n{content}\n"
 
 
+def _without_leading_h1(content: str) -> str:
+    """源文档常自带 H1；目录标题由组装器统一提供，避免重复标题。"""
+    return re.sub(r"^\s*#\s+[^\n]+\n*", "", content, count=1).strip()
+
+
 def _safe_source(source_dir: Path, relative: str) -> Path:
     path = (source_dir / relative).resolve()
     if not path.is_relative_to(source_dir.resolve()):
@@ -45,12 +50,12 @@ def build_handout(
     *,
     courses_dir: Path | None = None,
     template_path: Path | None = None,
-    max_types: int = 12,
+    max_chapters: int | None = None,
 ) -> HandoutBuildResult:
     """Build a deterministic manuscript from the current Obsidian export."""
 
-    if max_types <= 0:
-        raise ValueError("题型数量上限必须大于 0")
+    if max_chapters is not None and max_chapters <= 0:
+        raise ValueError("章节数量上限必须大于 0")
 
     course_dir = _safe_course_dir(Path(output_dir), course)
     if courses_dir is None:
@@ -81,7 +86,7 @@ def build_handout(
                 if section.required:
                     missing.append(section.source)
                 continue
-            parts.append(_section(section.title, section.source, _read(path)))
+            parts.append(_section(section.title, section.source, _without_leading_h1(_read(path))))
             continue
 
         pattern = section.glob or ""
@@ -89,20 +94,26 @@ def build_handout(
         detail_paths = sorted(
             (path for path in source_dir.glob(pattern) if path.is_file()),
             key=lambda path: path.name,
-        )[:max_types]
+        )
+        if max_chapters is not None and section.id == "chapters":
+            detail_paths = detail_paths[:max_chapters]
         if not detail_paths:
             if section.required:
                 missing.append(pattern)
             continue
-        parts.extend([f"## {section.title}", ""])
+        if section.id != "chapters":
+            parts.extend([f"## {section.title}", ""])
         for path in detail_paths:
             if not path.resolve().is_relative_to(glob_root.parent.resolve()):
                 raise ValueError(f"讲义源文件路径越界：{path}")
-            content = _read(path)
+            content = _without_leading_h1(_read(path))
             chapter_path = chapters_dir / path.name
             chapter_path.write_text(content + "\n", encoding="utf-8")
             relative = path.relative_to(source_dir).as_posix()
             display_title = re.sub(r"^\d+[-_. ]*", "", path.stem)
+            if section.id == "chapters":
+                ordinal = re.match(r"^(\d+)", path.stem)
+                display_title = f"第{int(ordinal.group(1)) if ordinal else display_title}章 {display_title}"
             parts.append(_section(display_title, relative, content))
 
     if missing:

@@ -41,7 +41,7 @@ python -m venv .venv
 ```powershell
 .venv\Scripts\courselm scan 电磁场
 .venv\Scripts\courselm generate 电磁场 --fresh
-.venv\Scripts\courselm generate 电磁场 --prompts question_type_summary
+.venv\Scripts\courselm generate 电磁场 --stage outline
 ```
 
 ## 生成“考前三天冲刺讲义”
@@ -52,7 +52,7 @@ python -m venv .venv
 .venv\Scripts\courselm generate 电磁场 --fresh
 ```
 
-一次完整新生成使用 **12 + N 次 NotebookLM 对话**：12 个固定教学模块，加不超过 `max_question_types` 个动态题型精讲。生成后可组装 Markdown/LaTeX 并导出 PDF：
+一次完整生成先分析课程结构，再分别生成绪论、每一章和三个附录。每个阶段独立缓存，单章失败可以单独恢复：
 
 ```powershell
 .venv\Scripts\courselm build-handout 电磁场
@@ -61,38 +61,35 @@ python -m venv .venv
 
 产物位于 `output/<课程名>/handout/` 和 `output/<课程名>/release/`。导出 PDF 前需要安装带 XeLaTeX 的 TeX Live 或 MiKTeX，并将其 `bin` 目录加入 PATH。讲义是人工审阅初稿，正式出售前请检查事实、公式、例题、个人信息和版权。
 
-默认学习路径为每天 4–6 小时：
+开发调试命令：
 
-- 第一天：使用说明、考试地图、零基础补给、一页知识骨架、核心考点卡。
-- 第二天：公式工具箱、题型识别地图、高频题型精讲。
-- 第三天：易错点诊断、最小训练集、考前速记、综合自测与补救路线。
+```powershell
+.venv\Scripts\courselm generate 电磁场 --stage outline
+.venv\Scripts\courselm generate 电磁场 --stage introduction
+.venv\Scripts\courselm generate 电磁场 --chapter 3
+.venv\Scripts\courselm generate 电磁场 --stage appendices
+```
 
 ## 工作流程与输出
 
 ```text
 扫描课程资料 → 创建/复用 NotebookLM Notebook → 上传资料
-→ 12 个固定教学 Prompt → 从题型识别地图解析题型清单
-→ 动态生成 N 个题型精讲 → 清洗 Markdown → 组装 LaTeX/PDF → 同步 Obsidian
+→ 分析课程结构 JSON → 生成绪论 → 逐章生成 → 生成三个附录
+→ 清洗 Markdown → 组装 LaTeX/PDF → 同步 Obsidian
 ```
 
 生成目录示例：
 
 ```text
 课程/电磁场/
-├── 00-使用说明.md
-├── 01-考前三天学习规划.md
-├── 02-考试地图.md
-├── 03-零基础补给站.md
-├── 04-一页知识骨架.md
-├── 05-核心考点卡.md
-├── 06-公式工具箱.md
-├── 07-题型识别地图.md
-├── 08-高频题型精讲/
-│   └── <题型名>.md
-├── 09-易错点诊断室.md
-├── 10-最小训练集.md
-├── 11-考前速记.md
-└── 12-综合自测与补救路线.md
+├── 00-绪论.md
+├── chapters/
+│   ├── 01-静电场.md
+│   └── 02-电势.md
+└── appendix/
+    ├── 01-重要公式汇总.md
+    ├── 02-典型题型索引.md
+    └── 03-考前复习提要.md
 ```
 
 输出经过统一 Markdown Sanitizer 处理：解码 HTML Entity、清理 HTML 残留、保护普通 Markdown，并只在数学区域修复 LaTeX 下标转义。公式使用 `$...$` 或 `$$...$$`，适配 Obsidian MathJax。

@@ -18,7 +18,6 @@ network:
 
 prompt_runner:
   retry: 1
-  max_question_types: 12
 
 file_types:
   - .pdf

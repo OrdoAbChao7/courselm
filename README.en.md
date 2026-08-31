@@ -41,7 +41,7 @@ Supported source files include PDF, PPT, DOCX, and images. Common commands:
 ```powershell
 .venv\Scripts\courselm scan 电磁场
 .venv\Scripts\courselm generate 电磁场 --fresh
-.venv\Scripts\courselm generate 电磁场 --prompts question_type_summary
+.venv\Scripts\courselm generate 电磁场 --stage outline
 ```
 
 ## Build a three-day crash handout
@@ -52,7 +52,7 @@ Use `--fresh` the first time you adopt the new module set; legacy cache entries 
 .venv\Scripts\courselm generate 电磁场 --fresh
 ```
 
-A fresh run uses **12 + N NotebookLM chats**: twelve fixed teaching modules and up to `max_question_types` dynamic question-type tutorials. Then assemble and export the handout:
+A fresh run first analyzes the course outline, then generates an introduction, dynamic chapters, and three appendices. Each stage is cached under `output/<course>/raw/v2/`, so a failed chapter can be rerun independently:
 
 ```powershell
 .venv\Scripts\courselm build-handout 电磁场
@@ -61,14 +61,13 @@ A fresh run uses **12 + N NotebookLM chats**: twelve fixed teaching modules and 
 
 The Markdown manuscript and LaTeX source are written under `output/<course>/handout/`; the PDF is written under `output/<course>/release/`. Install TeX Live or MiKTeX with XeLaTeX and add its `bin` directory to PATH before exporting. Review facts, formulas, examples, personal information, and copyright before selling the handout.
 
-The default schedule assumes 4–6 hours per day: day one builds the exam map and foundations, day two focuses on formulas and question types, and day three covers mistakes, minimum practice, the cram sheet, and final self-testing.
+Development commands include `--stage outline`, `--stage introduction`, `--stage appendices`, and `--chapter N`.
 
 ## Workflow and output
 
 ```text
 Scan course files → create/reuse a NotebookLM notebook → upload files
-→ 12 fixed teaching prompts → parse the question-type map
-→ generate N question-type tutorials → sanitize Markdown
+→ course-outline JSON → introduction → dynamic chapters → three appendices
 → assemble LaTeX/PDF → sync to Obsidian
 ```
 
@@ -76,19 +75,12 @@ Example output:
 
 ```text
 课程/电磁场/
-├── 00-使用说明.md
-├── 01-考前三天学习规划.md
-├── 02-考试地图.md
-├── 03-零基础补给站.md
-├── 04-一页知识骨架.md
-├── 05-核心考点卡.md
-├── 06-公式工具箱.md
-├── 07-题型识别地图.md
-├── 08-高频题型精讲/<题型名>.md
-├── 09-易错点诊断室.md
-├── 10-最小训练集.md
-├── 11-考前速记.md
-└── 12-综合自测与补救路线.md
+├── 00-绪论.md
+├── chapters/<序号>-<章节名>.md
+└── appendix/
+    ├── 01-重要公式汇总.md
+    ├── 02-典型题型索引.md
+    └── 03-考前复习提要.md
 ```
 
 All generated output passes through one Markdown Sanitizer. It decodes HTML entities, removes HTML residue, preserves ordinary Markdown, and repairs escaped LaTeX subscripts only inside math regions. Inline and block formulas use `$...$` and `$$...$$`, compatible with Obsidian MathJax.

@@ -40,10 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_scan = sub.add_parser("scan", help="扫描课程目录，列出资料清单")
     p_scan.add_argument("course", help="课程名（courses/ 下的目录名）")
 
-    p_gen = sub.add_parser("generate", help="完整流水线（开发中）")
+    p_gen = sub.add_parser("generate", help="生成课程结构驱动的期末复习讲义资料")
     p_gen.add_argument("course", help="课程名")
     p_gen.add_argument("--fresh", action="store_true", help="忽略缓存，强制重跑")
-    p_gen.add_argument("--prompts", default=None, help="只执行指定固定 Prompt（逗号分隔 id）")
+    p_gen.add_argument("--stage", choices=["outline", "introduction", "appendices"], default=None,
+                       help="只运行指定阶段；章节可用 --chapter 单独运行")
+    p_gen.add_argument("--chapter", type=int, default=None, help="只生成指定章节（从 1 开始）")
 
     p_handout = sub.add_parser("build-handout", help="从 Obsidian Markdown 生成讲义初稿和 LaTeX 源码")
     p_handout.add_argument("course", help="课程名")
@@ -88,7 +90,6 @@ def _build_handout_files(cfg, course: str):
         course,
         cfg.paths.output_dir,
         courses_dir=cfg.paths.courses_dir,
-        max_types=cfg.prompt_runner.max_question_types,
     )
     manuscript = result.manuscript_path.read_text(encoding="utf-8")
     write_latex_document(
@@ -189,15 +190,6 @@ def cmd_generate(args: argparse.Namespace) -> int:
         logger.error("{}", e)
         return EXIT_USAGE
 
-    only_fixed: list[str] | None = None
-    if args.prompts:
-        only_fixed = [s.strip() for s in args.prompts.split(",") if s.strip()]
-        known = {p.id for p in book.fixed}
-        unknown = [pid for pid in only_fixed if pid not in known]
-        if unknown:
-            logger.error("未知的 Prompt id：{}（可选：{}）", unknown, sorted(known))
-            return EXIT_USAGE
-
     # ---- 流水线 ----
     from modules.notebooklm import (
         NotebookLMAuthError,
@@ -213,7 +205,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             ) as svc:
                 return await run_pipeline(
                     cfg, book, args.course, manifest, svc,
-                    only_fixed=only_fixed, fresh=args.fresh,
+                    stage=args.stage, chapter=args.chapter, fresh=args.fresh,
                 )
 
         result = asyncio.run(_pipeline())
@@ -236,14 +228,17 @@ def cmd_generate(args: argparse.Namespace) -> int:
         return EXIT_RUNTIME
 
     # ---- 汇总 ----
-    all_outcomes = (*result.fixed_outcomes, *result.type_outcomes)
+    all_outcomes = result.all_outcomes
     ok = [o for o in all_outcomes if o.success]
     cached = [o for o in ok if o.from_cache]
 
     print(f"\n{'=' * 56}")
     print(f"课程「{args.course}」处理完成")
-    print(f"  Prompt  : {len(ok)}/{len(all_outcomes)} 成功（{len(cached)} 个缓存命中）")
-    print(f"  题型    : {len(result.question_types)} 类" if result.question_types else "  题型    : 未解析（调试模式或总结失败）")
+    print(f"  课程结构：识别 {len(result.outline.chapters) if result.outline else 0} 章")
+    print(f"  绪论    ：{'完成' if result.introduction_outcome and result.introduction_outcome.success else '未完成'}")
+    print(f"  章节    ：{sum(o.success for o in result.chapter_outcomes)}/{len(result.chapter_outcomes)} 完成")
+    print(f"  附录    ：{sum(o.success for o in result.appendix_outcomes)}/3 完成")
+    print(f"  缓存命中：{len(cached)}")
     print(f"  生成文档: {len(written)} 篇 → {cfg.paths.output_dir / args.course / 'md'}")
     print(f"  同步 Vault: {len(synced)} 篇")
     if result.failures:

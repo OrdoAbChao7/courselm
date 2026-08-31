@@ -51,7 +51,7 @@ class TestLoadConfig:
     def test_real_project_config_loads(self) -> None:
         """真实 config/config.yaml 必须始终可加载（用户改坏配置时本测试报警）。"""
         cfg = load_config(PROJECT_ROOT / "config" / "config.yaml")
-        assert cfg.prompt_runner.max_question_types >= 1
+        assert cfg.prompt_runner.retry >= 0
         assert len(cfg.file_types) >= 5
 
     def test_missing_file(self, tmp_path: Path) -> None:

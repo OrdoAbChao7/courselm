@@ -22,7 +22,6 @@ network:
 
 prompt_runner:
   retry: 1                   # 单个 Prompt 失败后的重试次数
-  max_question_types: 12     # 题型数量上限（完整新生成的 chats 用量：单课 = 12 固定 + N 题型）
 
 file_types:                  # 识别为课程资料的文件扩展名
   - .pdf

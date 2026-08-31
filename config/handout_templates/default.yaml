@@ -1,6 +1,6 @@
-version: 1
-title_suffix: 考前三天冲刺讲义
-subtitle: 面向基础薄弱学生 · 抓核心考点 · 会识别题型 · 少丢可避免的分
+version: 2
+title_suffix: 期末复习讲义
+subtitle: 面向基础薄弱学生 · 先听懂，再会做，最后抓住得分点
 
 latex:
   layout: academic
@@ -11,68 +11,18 @@ latex:
   muted_color: 6B7280
 
 sections:
-  - id: study_guide
-    title: 使用说明
-    source: 00-使用说明.md
+  - id: introduction
+    title: 绪论
+    source: 00-绪论.md
     required: true
     page_break: false
-  - id: three_day_plan
-    title: 考前三天学习规划
-    source: 01-考前三天学习规划.md
+  - id: chapters
+    title: 各章复习内容
+    glob: chapters/*.md
     required: true
     page_break: true
-  - id: exam_map
-    title: 考试地图
-    source: 02-考试地图.md
+  - id: appendices
+    title: 附录
+    glob: appendix/*.md
     required: true
-    page_break: false
-  - id: prerequisite_rescue
-    title: 零基础补给站
-    source: 03-零基础补给站.md
-    required: true
-    page_break: false
-  - id: knowledge_structure
-    title: 一页知识骨架
-    source: 04-一页知识骨架.md
-    required: true
-    page_break: false
-  - id: core_exam_points
-    title: 核心考点卡
-    source: 05-核心考点卡.md
-    required: true
-    page_break: false
-  - id: formula_summary
-    title: 公式工具箱
-    source: 06-公式工具箱.md
-    required: true
-    page_break: false
-  - id: question_type_summary
-    title: 题型识别地图
-    source: 07-题型识别地图.md
-    required: true
-    page_break: false
-  - id: question_type_details
-    title: 高频题型精讲
-    glob: 08-高频题型精讲/*.md
-    required: true
-    page_break: false
-  - id: mistake_diagnostics
-    title: 易错点诊断室
-    source: 09-易错点诊断室.md
-    required: true
-    page_break: false
-  - id: minimal_training
-    title: 最小训练集
-    source: 10-最小训练集.md
-    required: true
-    page_break: false
-  - id: final_cram_sheet
-    title: 考前速记
-    source: 11-考前速记.md
-    required: true
-    page_break: false
-  - id: comprehensive_self_test
-    title: 综合自测与补救路线
-    source: 12-综合自测与补救路线.md
-    required: true
-    page_break: false
+    page_break: true

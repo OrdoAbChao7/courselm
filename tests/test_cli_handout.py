@@ -18,16 +18,13 @@ def _cfg(tmp_path: Path) -> AppConfig:
 
 def _source(tmp_path: Path) -> None:
     md = tmp_path / "output" / "电磁场" / "md"
-    (md / "08-高频题型精讲").mkdir(parents=True)
-    files = [
-        "00-使用说明.md", "01-考前三天学习规划.md", "02-考试地图.md",
-        "03-零基础补给站.md", "04-一页知识骨架.md", "05-核心考点卡.md",
-        "06-公式工具箱.md", "07-题型识别地图.md", "09-易错点诊断室.md",
-        "10-最小训练集.md", "11-考前速记.md", "12-综合自测与补救路线.md",
-    ]
-    for name in files:
-        (md / name).write_text(f"# {Path(name).stem}\n\n$$E=mc^2$$", encoding="utf-8")
-    (md / "08-高频题型精讲" / "镜像法.md").write_text("# 镜像法", encoding="utf-8")
+    (md / "chapters").mkdir(parents=True)
+    (md / "appendix").mkdir()
+    (md / "00-绪论.md").write_text("# 绪论\n\n$$E=mc^2$$", encoding="utf-8")
+    for i, title in [(1, "函数"), (2, "极限")]:
+        (md / "chapters" / f"{i:02d}-{title}.md").write_text(f"# 第{i}章 {title}\n\n$$E=mc^2$$", encoding="utf-8")
+    for i, title in enumerate(["重要公式汇总", "典型题型索引", "考前复习提要"], 1):
+        (md / "appendix" / f"{i:02d}-{title}.md").write_text(f"# {title}\n\n$$E=mc^2$$", encoding="utf-8")
 
 
 def test_build_handout_command_writes_latex(tmp_path: Path, monkeypatch, capsys) -> None:

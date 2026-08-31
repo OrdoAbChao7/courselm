@@ -113,36 +113,34 @@ class MarkdownDoc(BaseModel):
 
 
 def collect_docs(book: PromptBook, result: PipelineResult) -> list[MarkdownDoc]:
-    """从流水线结果推导文档清单。失败的 Prompt 不生成文档。"""
+    """从 v2 流水线结果推导绪论、动态章节和附录文档清单。"""
     docs: list[MarkdownDoc] = []
-
-    fixed_by_id = {o.key: o for o in result.fixed_outcomes if o.success}
-    for p in book.fixed:
-        outcome = fixed_by_id.get(p.id)
-        if outcome is None:
-            continue
-        docs.append(
-            MarkdownDoc(
-                dest_rel=p.output_file,
+    if result.introduction_outcome and result.introduction_outcome.success:
+        docs.append(MarkdownDoc(
+            dest_rel=book.global_prompts.introduction.output_file,
+            raw_file=result.introduction_outcome.raw_file,
+            doc_type=book.global_prompts.introduction.title,
+            title=book.global_prompts.introduction.title,
+        ))
+    for outcome in result.chapter_outcomes:
+        if outcome.success:
+            docs.append(MarkdownDoc(
+                dest_rel=f"chapters/{Path(outcome.raw_file).name}",
                 raw_file=outcome.raw_file,
-                doc_type=p.title,
-                title=p.title,
-            )
-        )
-
-    detail = book.question_type_detail
-    for o in result.type_outcomes:
-        if not o.success:
-            continue
-        docs.append(
-            MarkdownDoc(
-                dest_rel=f"{detail.output_subdir}/{o.title}.md",
-                raw_file=o.raw_file,
-                doc_type=detail.title,
-                title=o.title,
-                extra_meta={"type_name": o.title},
-            )
-        )
+                doc_type=book.dynamic.chapter.title,
+                title=outcome.title,
+                extra_meta={"chapter": outcome.key.removeprefix("chapter_")},
+            ))
+    appendix_by_id = {item.id: item for item in book.appendices}
+    for outcome in result.appendix_outcomes:
+        if outcome.success and outcome.key in appendix_by_id:
+            prompt = appendix_by_id[outcome.key]
+            docs.append(MarkdownDoc(
+                dest_rel=prompt.output_file,
+                raw_file=outcome.raw_file,
+                doc_type=prompt.title,
+                title=prompt.title,
+            ))
     return docs
 
 
@@ -154,7 +152,7 @@ def generate_all(
 ) -> list[Path]:
     """读取 raw 缓存 → 渲染 → 写入 output/<课程>/md/。返回已写文件列表。"""
     md_dir = cfg.paths.output_dir / course_name / "md"
-    raw_dir = cfg.paths.output_dir / course_name / "raw"
+    raw_dir = cfg.paths.output_dir / course_name / "raw" / "v2"
     md_dir.mkdir(parents=True, exist_ok=True)
 
     written: list[Path] = []
