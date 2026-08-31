@@ -163,6 +163,13 @@ def render_markdown_to_latex(markdown: str) -> str:
         .replace(r"\[", "$$")
         .replace(r"\]", "$$")
     )
+    # NotebookLM sometimes appends Chinese prose directly to a TeX operator,
+    # e.g. ``\max分母``. Split it into a valid operator and text atom.
+    normalized = re.sub(
+        r"\\(max|min|sup|inf|lim)([\u3400-\u9fff]+)",
+        r"\\\1\\text{\2}",
+        normalized,
+    )
     if normalized.count("$$") % 2:
         last_marker = normalized.rfind("$$")
         normalized = normalized[:last_marker] + normalized[last_marker + 2 :]

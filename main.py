@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -75,11 +76,23 @@ def compile_latex(tex_path: Path) -> tuple[bool, str]:
         )
         outputs.append((completed.stdout or "") + (completed.stderr or ""))
         if completed.returncode != 0:
-            return False, outputs[-1][-4000:]
+            # MiKTeX may return 1 for update-check/overfull-box diagnostics
+            # even after writing a usable PDF. Accept only when the PDF
+            # exists and the transcript contains no fatal TeX marker.
+            diagnostic = outputs[-1]
+            fatal = re.search(r"(?m)^!|Emergency stop|Fatal error", diagnostic)
+            if not pdf_path_if_exists(tex_path) or fatal:
+                return False, diagnostic[-4000:]
     pdf_path = tex_path.with_suffix(".pdf")
     if not pdf_path.is_file():
         return False, "xelatex 返回成功，但没有生成 PDF 文件"
     return True, "\n".join(outputs)[-4000:]
+
+
+def pdf_path_if_exists(tex_path: Path) -> Path | None:
+    """Return the generated PDF path only when it is already present."""
+    path = tex_path.with_suffix(".pdf")
+    return path if path.is_file() else None
 
 
 def _build_handout_files(cfg, course: str):

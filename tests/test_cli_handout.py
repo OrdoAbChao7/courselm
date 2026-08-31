@@ -72,3 +72,16 @@ def test_compile_latex_tolerates_missing_process_output(tmp_path: Path, monkeypa
     monkeypatch.setattr(main.subprocess, "run", fake_run)
 
     assert main.compile_latex(tex)[0] is True
+
+
+def test_compile_latex_accepts_miktex_nonzero_with_valid_pdf(tmp_path: Path, monkeypatch) -> None:
+    tex = tmp_path / "main.tex"
+    tex.write_text("内容", encoding="utf-8")
+    monkeypatch.setattr(main.shutil, "which", lambda name: "xelatex.exe")
+
+    def fake_run(*args, **kwargs):
+        tex.with_suffix(".pdf").write_bytes(b"%PDF-fake")
+        return main.subprocess.CompletedProcess(args[0], 1, stdout="Output written on main.pdf", stderr="MiKTeX major issue")
+
+    monkeypatch.setattr(main.subprocess, "run", fake_run)
+    assert main.compile_latex(tex)[0] is True

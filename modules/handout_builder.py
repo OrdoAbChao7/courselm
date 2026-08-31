@@ -29,11 +29,12 @@ def _read(path: Path) -> str:
 
 
 def _section(title: str, source: str, content: str) -> str:
-    return f"## {title}\n\n> 来源：{source}\n\n{content}\n"
+    return f"# {title}\n\n> 来源：{source}\n\n{content}\n"
 
 
 def _without_leading_h1(content: str) -> str:
     """源文档常自带 H1；目录标题由组装器统一提供，避免重复标题。"""
+    content = re.sub(r"^\s*---\s*\n.*?\n---\s*\n*", "", content, count=1, flags=re.DOTALL)
     return re.sub(r"^\s*#\s+[^\n]+\n*", "", content, count=1).strip()
 
 
@@ -69,10 +70,7 @@ def build_handout(
 
     missing: list[str] = []
     parts = [
-        f"# {course}{template.title_suffix}",
-        "",
         f"> {template.subtitle}",
-        "> 本讲义按“第一天建框架、第二天练题型、第三天查漏补缺”的顺序组织。",
         "> 这是可人工审阅的初稿，正式发布前请完成事实、公式、例题和版权检查。",
         "",
     ]
@@ -102,7 +100,7 @@ def build_handout(
                 missing.append(pattern)
             continue
         if section.id != "chapters":
-            parts.extend([f"## {section.title}", ""])
+            parts.extend([f"# {section.title}", ""])
         for path in detail_paths:
             if not path.resolve().is_relative_to(glob_root.parent.resolve()):
                 raise ValueError(f"讲义源文件路径越界：{path}")

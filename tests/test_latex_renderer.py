@@ -204,3 +204,9 @@ def test_render_markdown_converts_bare_asterisk_italics() -> None:
     rendered = render_markdown_to_latex("说明：*为什么这样做*")
 
     assert "\\textit{为什么这样做}" in rendered
+
+
+def test_render_markdown_repairs_latex_operator_attached_to_chinese() -> None:
+    rendered = render_markdown_to_latex(r"$$x_n \le \frac{a_n}{\max分母}$$")
+
+    assert r"\max\text{分母}" in rendered
