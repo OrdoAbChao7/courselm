@@ -85,3 +85,20 @@ def test_compile_latex_accepts_miktex_nonzero_with_valid_pdf(tmp_path: Path, mon
 
     monkeypatch.setattr(main.subprocess, "run", fake_run)
     assert main.compile_latex(tex)[0] is True
+
+
+def test_compile_latex_does_not_accept_stale_pdf(tmp_path: Path, monkeypatch) -> None:
+    tex = tmp_path / "main.tex"
+    pdf = tex.with_suffix(".pdf")
+    tex.write_text("内容", encoding="utf-8")
+    pdf.write_bytes(b"%PDF-old")
+    monkeypatch.setattr(main.shutil, "which", lambda name: "xelatex.exe")
+
+    monkeypatch.setattr(
+        main.subprocess,
+        "run",
+        lambda *args, **kwargs: main.subprocess.CompletedProcess(args[0], 1, stdout="", stderr="MiKTeX major issue"),
+    )
+
+    assert main.compile_latex(tex)[0] is False
+    assert not pdf.exists()

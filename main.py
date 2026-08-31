@@ -63,6 +63,9 @@ def compile_latex(tex_path: Path) -> tuple[bool, str]:
     executable = shutil.which("xelatex")
     if not executable:
         return False, "未找到 xelatex，请安装 TeX Live 或 MiKTeX 并将其加入 PATH"
+    pdf_path = tex_path.with_suffix(".pdf")
+    # Never treat an old artifact as the result of a failed compilation.
+    pdf_path.unlink(missing_ok=True)
     outputs: list[str] = []
     for _ in range(2):
         completed = subprocess.run(
@@ -83,7 +86,6 @@ def compile_latex(tex_path: Path) -> tuple[bool, str]:
             fatal = re.search(r"(?m)^!|Emergency stop|Fatal error", diagnostic)
             if not pdf_path_if_exists(tex_path) or fatal:
                 return False, diagnostic[-4000:]
-    pdf_path = tex_path.with_suffix(".pdf")
     if not pdf_path.is_file():
         return False, "xelatex 返回成功，但没有生成 PDF 文件"
     return True, "\n".join(outputs)[-4000:]

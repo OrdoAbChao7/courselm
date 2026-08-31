@@ -103,34 +103,101 @@ def _split_table_cells(line: str) -> list[str]:
     cells: list[str] = []
     current: list[str] = []
     dollar_count = 0
-    for char in line.strip().strip("|"):
-        if char == "$":
+    text = line.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|") and not text.endswith("\\|"):
+        text = text[:-1]
+    escaped = False
+    for char in text:
+        if char == "$" and not escaped:
             dollar_count += 1
-        if char == "|" and dollar_count % 2 == 0:
+        if char == "|" and dollar_count % 2 == 0 and not escaped:
             cells.append("".join(current).strip())
             current = []
         else:
             current.append(char)
+        escaped = char == "\\" and not escaped
+        if char != "\\":
+            escaped = False
     cells.append("".join(current).strip())
     return cells
 
 
+def _is_table_separator(line: str) -> bool:
+    cells = _split_table_cells(line)
+    return bool(cells) and all(re.fullmatch(r":?-{1,}:?", cell.replace(" ", "")) for cell in cells)
+
+
+def _normalize_table_row(line: str, columns: int) -> list[str]:
+    cells = _split_table_cells(line)
+    if len(cells) < columns:
+        cells.extend([""] * (columns - len(cells)))
+    elif len(cells) > columns:
+        cells = cells[: columns - 1] + [" | ".join(cells[columns - 1 :])]
+    return cells
+
+
+def _collect_table_lines(lines: list[str], start: int) -> tuple[list[str], int]:
+    """Collect a table whose generated Markdown rows may contain hard wraps."""
+    table_lines = [lines[start], lines[start + 1]]
+    columns = len(_split_table_cells(lines[start]))
+    current: str | None = None
+    index = start + 2
+
+    while index < len(lines):
+        candidate = lines[index]
+        stripped = candidate.strip()
+        if not stripped:
+            break
+        if current is None:
+            if not stripped.startswith("|"):
+                break
+            current = candidate
+        elif len(_split_table_cells(current)) >= columns:
+            table_lines.append(current)
+            if not stripped.startswith("|"):
+                break
+            current = candidate
+        else:
+            current += " " + stripped
+        if current is not None and len(_split_table_cells(current)) >= columns:
+            table_lines.append(current)
+            current = None
+        index += 1
+
+    if current is not None:
+        table_lines.append(current)
+    return table_lines, index
+
+
 def _table(lines: list[str]) -> str:
-    rows = []
-    for line in lines:
-        cells = _split_table_cells(line)
-        if all(set(cell) <= {"-", ":", " "} for cell in cells):
-            continue
-        rows.append(
+    if not lines:
+        return ""
+    columns = max(1, len(_split_table_cells(lines[0])))
+    body_lines = lines[2:] if len(lines) > 1 and _is_table_separator(lines[1]) else lines[1:]
+
+    def row(cells: list[str]) -> str:
+        return (
             " & ".join(_inline(cell).replace("\\[", "\\(").replace("\\]", "\\)") for cell in cells)
             + r" \\")
-    columns = max(1, len(rows[0].split(" & ")) if rows else 1)
-    width = max(0.12, 0.90 / columns)
-    column_spec = "|" + "|".join([f"p{{{width:.2f}\\textwidth}}"] * columns) + "|"
+
+    header_row = row(_normalize_table_row(lines[0], columns))
+    body_rows = [row(_normalize_table_row(line, columns)) for line in body_lines if line.strip()]
+    width = max(0.12, 0.94 / columns)
+    column = r">{\raggedright\arraybackslash}p{" + f"{width:.2f}" + r"\textwidth}"
+    column_spec = "@{}" + column * columns + "@{}"
+    repeated_header = (
+        "\\toprule\n" + header_row + "\n\\midrule\n\\endhead\n"
+        "\\toprule\n" + header_row + "\n\\midrule\n\\endfirsthead\n"
+    )
     return (
-        "\\begin{longtable}{" + column_spec + "}\n\\hline\n"
-        + "\n\\hline\n".join(rows)
-        + "\n\\hline\n\\end{longtable}"
+        "\\begingroup\\small\\setlength{\\tabcolsep}{3pt}"
+        "\\renewcommand{\\arraystretch}{1.18}\\sloppy\n"
+        "\\begin{longtable}{" + column_spec + "}\n"
+        + repeated_header
+        + ("\n" + "\n".join(body_rows) if body_rows else "")
+        + "\n\\bottomrule\n\\end{longtable}\\endgroup"
     )
 
 
@@ -241,15 +308,15 @@ def render_markdown_to_latex(markdown: str) -> str:
                 output.append(_inline(stripped[2:]))
                 i += 1
             continue
-        if stripped.startswith("|") and i + 1 < len(lines) and "|" in lines[i + 1]:
+        if (
+            stripped.startswith("|")
+            and i + 1 < len(lines)
+            and _is_table_separator(lines[i + 1])
+        ):
             if in_list:
                 output.append("\\end{itemize}")
                 in_list = False
-            table_lines = [line]
-            i += 1
-            while i < len(lines) and lines[i].strip().startswith("|"):
-                table_lines.append(lines[i])
-                i += 1
+            table_lines, i = _collect_table_lines(lines, i)
             output.append(_table(table_lines))
             continue
         callout = _CALLOUT.match(stripped)

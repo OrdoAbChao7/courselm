@@ -66,7 +66,40 @@ def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
 
     assert "\\begin{longtable}" in rendered
     assert "镜像法" in rendered
-    assert "\\hline" in rendered
+    assert "\\toprule" in rendered
+    assert "\\midrule" in rendered
+    assert "\\bottomrule" in rendered
+
+
+def test_render_markdown_repairs_multiline_table_rows() -> None:
+    source = """| 优先级 | 考点名称 | 对应章节 | 真题题型与分值 | 复习策略 |
+| :---: | :--- | :--- | :--- | :--- |
+| **第一优先级
+（必考）** | 未定式极限计算 | 第二章 | 计算题 Q11（10分）
+填空题 Q1（2分） | **重点掌握** |
+| 第二优先级 | 定积分 | 第五章 | 计算题 | 熟悉步骤 |
+"""
+
+    rendered = render_markdown_to_latex(source)
+
+    assert rendered.count("\\begin{longtable}") == 1
+    assert "第一优先级" in rendered
+    assert "（必考）" in rendered
+    assert "填空题 Q1（2分）" in rendered
+    assert "第二优先级 & 定积分 & 第五章 & 计算题 & 熟悉步骤" in rendered
+
+
+def test_render_markdown_normalizes_uneven_table_rows() -> None:
+    source = """| 题型 | 结论 |
+| --- | --- |
+| 计算题 | 先列公式 | 多余内容 |
+"""
+
+    rendered = render_markdown_to_latex(source)
+
+    assert rendered.count("\\begin{longtable}") == 1
+    assert "先列公式 | 多余内容" in rendered
+    assert "计算题 & 先列公式 | 多余内容" in rendered
 
 
 def test_render_markdown_uses_inline_math_inside_tables() -> None:
@@ -80,7 +113,7 @@ def test_render_markdown_keeps_pipes_inside_math_table_cells() -> None:
     rendered = render_markdown_to_latex("| 题目 | 结论 |\n| --- | --- |\n| $|x-1|$ | 分段计算 |")
 
     assert "|x-1|" in rendered
-    assert rendered.count(" & ") == 2
+    assert "\\(|x-1|\\) & 分段计算" in rendered
 
 
 def test_render_markdown_drops_frontmatter_and_renders_callouts() -> None:
