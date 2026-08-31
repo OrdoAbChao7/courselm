@@ -16,6 +16,8 @@ release/
 logs/
 output/
 courses/
+tmp/
+user_data/
 *.log
 
 # 环境与 IDE
