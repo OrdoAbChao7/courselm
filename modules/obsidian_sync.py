@@ -27,6 +27,9 @@ def sync_course(cfg: AppConfig, course_name: str) -> list[Path]:
     Raises:
         ObsidianSyncError: vault_path 未配置或指向不存在的目录。
     """
+    if not course_name or "/" in course_name or "\\" in course_name or course_name in (".", ".."):
+        raise ObsidianSyncError(f"非法的课程名称：{course_name}")
+
     vault = cfg.require_vault()
     if not vault.is_dir():
         raise ObsidianSyncError(

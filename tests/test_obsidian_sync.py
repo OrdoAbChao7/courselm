@@ -87,3 +87,8 @@ class TestSyncCourse:
         cfg.obsidian.course_folder = "大学课程"
         sync_course(cfg, "电磁场")
         assert (vault / "大学课程" / "电磁场" / "知识结构.md").is_file()
+
+    def test_course_name_path_traversal(self, tmp_path: Path) -> None:
+        cfg = make_cfg(tmp_path, str(tmp_path / "vault"))
+        with pytest.raises(ObsidianSyncError, match="非法的课程名称"):
+            sync_course(cfg, "../secret")

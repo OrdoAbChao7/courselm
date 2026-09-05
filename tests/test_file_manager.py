@@ -153,3 +153,12 @@ class TestManifestModel:
         assert [f.path.name for f in m1.files] == [f.path.name for f in m2.files]
         rels = [str(f.path.relative_to(course).as_posix()) for f in m1.files]
         assert rels == sorted(rels)
+
+    def test_course_name_path_traversal(self, tmp_path: Path) -> None:
+        """测试防止通过 course_name 进行目录穿越。"""
+        with pytest.raises(CourseNotFoundError, match="非法的课程名称"):
+            scan_course(tmp_path, "../secret", [".pdf"])
+        with pytest.raises(CourseNotFoundError, match="非法的课程名称"):
+            scan_course(tmp_path, "a/b", [".pdf"])
+        with pytest.raises(CourseNotFoundError, match="非法的课程名称"):
+            scan_course(tmp_path, "C:\\Windows", [".pdf"])

@@ -88,6 +88,9 @@ def scan_course(
         CourseNotFoundError —— 课程目录不存在
         NoCourseFilesError  —— 没有匹配类型的文件
     """
+    if not course_name or "/" in course_name or "\\" in course_name or course_name in (".", ".."):
+        raise CourseNotFoundError(f"非法的课程名称：{course_name}")
+
     courses_dir = Path(courses_dir)
     course_dir = courses_dir / course_name
     if not course_dir.is_dir():
