@@ -246,6 +246,9 @@ async def run_pipeline(
     """
     from modules.prompts import render_dynamic, render_fixed
 
+    if not course_name or "/" in course_name or "\\" in course_name or course_name in (".", ".."):
+        raise PromptRunnerError(f"非法的课程名称：{course_name}")
+
     out_dir = cfg.paths.output_dir / course_name
     raw_dir = out_dir / "raw"
     state_path = out_dir / "state.json"

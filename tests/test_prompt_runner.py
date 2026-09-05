@@ -298,3 +298,17 @@ class TestRunPipeline:
         content = state_file.read_text(encoding="utf-8")
         assert "nb-1" in content
         assert "教材.pdf" in content
+
+    @pytest.mark.anyio
+    async def test_course_name_path_traversal(self, tmp_path: Path) -> None:
+        cfg = make_cfg(tmp_path)
+        book = make_book()
+        manifest = CourseManifest(
+            course_name="电磁场",
+            root=cfg.paths.courses_dir / "电磁场",
+            files=[],
+            total_size_bytes=0,
+        )
+        svc = FakeService()
+        with pytest.raises(PromptRunnerError, match="非法的课程名称"):
+            await run_pipeline(cfg, book, "../secret", manifest, svc)
