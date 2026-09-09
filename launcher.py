@@ -90,12 +90,9 @@ class CourseLMApp:
         self.course_box = ttk.Combobox(
             frame,
             textvariable=self.course_var,
-            values=discover_courses(project_root),
             state="readonly",
         )
         self.course_box.pack(fill=tk.X, pady=(4, 12))
-        if self.course_box["values"]:
-            self.course_box.current(0)
 
         actions = ttk.Frame(frame)
         actions.pack(fill=tk.X)
@@ -111,11 +108,23 @@ class CourseLMApp:
         self.output.pack(fill=tk.BOTH, expand=True)
         self.root.after(100, self._drain_messages)
 
+        # Initialize courses and component states
+        self.refresh_courses()
+
     def refresh_courses(self) -> None:
         courses = discover_courses(self.project_root)
-        self.course_box["values"] = courses
-        if courses and self.course_var.get() not in courses:
-            self.course_box.current(0)
+        if courses:
+            self.course_box.configure(state="readonly")
+            self.course_box["values"] = courses
+            if self.course_var.get() not in courses:
+                self.course_box.current(0)
+            if self.process is None:
+                self.generate_button.state(["!disabled"])
+        else:
+            self.course_box.configure(state="disabled")
+            self.course_box["values"] = []
+            self.course_var.set("(未发现课程，请在 courses 目录中添加)")
+            self.generate_button.state(["disabled"])
         self._append(f"已发现 {len(courses)} 个课程目录。\n")
 
     def login(self) -> None:
