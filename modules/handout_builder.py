@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from modules.handout_template import HandoutTemplate, load_handout_template
+from modules.question_index import ExampleEntry, index_chapter, pdf_question_index
 
 
 @dataclass(frozen=True)
@@ -28,8 +29,8 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _section(title: str, source: str, content: str) -> str:
-    return f"# {title}\n\n> 来源：{source}\n\n{content}\n"
+def _section(title: str, content: str) -> str:
+    return f"# {title}\n\n{content}\n"
 
 
 def _without_leading_h1(content: str) -> str:
@@ -69,11 +70,8 @@ def build_handout(
     chapters_dir.mkdir(parents=True, exist_ok=True)
 
     missing: list[str] = []
-    parts = [
-        f"> {template.subtitle}",
-        "> 这是可人工审阅的初稿，正式发布前请完成事实、公式、例题和版权检查。",
-        "",
-    ]
+    parts: list[str] = []
+    examples: list[ExampleEntry] = []
 
     for section in template.sections:
         if section.page_break:
@@ -84,7 +82,7 @@ def build_handout(
                 if section.required:
                     missing.append(section.source)
                 continue
-            parts.append(_section(section.title, section.source, _without_leading_h1(_read(path))))
+            parts.append(_section(section.title, _without_leading_h1(_read(path))))
             continue
 
         pattern = section.glob or ""
@@ -104,19 +102,24 @@ def build_handout(
         for path in detail_paths:
             if not path.resolve().is_relative_to(glob_root.parent.resolve()):
                 raise ValueError(f"讲义源文件路径越界：{path}")
-            content = _without_leading_h1(_read(path))
+            source_content = _read(path)
+            if section.id == "chapters":
+                source_content, found = index_chapter(source_content, path.name, len(examples) + 1, annotate=True)
+                examples.extend(found)
+            content = _without_leading_h1(source_content)
             chapter_path = chapters_dir / path.name
             chapter_path.write_text(content + "\n", encoding="utf-8")
-            relative = path.relative_to(source_dir).as_posix()
             display_title = re.sub(r"^\d+[-_. ]*", "", path.stem)
             if section.id == "chapters":
                 ordinal = re.match(r"^(\d+)", path.stem)
                 display_title = f"第{int(ordinal.group(1)) if ordinal else display_title}章 {display_title}"
-            parts.append(_section(display_title, relative, content))
+            if section.id == "appendices" and "题型索引" in path.stem and examples:
+                content = pdf_question_index(examples)
+            parts.append(_section(display_title, content))
 
     if missing:
         warning = "、".join(missing)
-        parts.insert(2, f"> 缺失输入：{warning}。本稿为部分生成结果，请补齐资料后重新构建。")
+        parts.insert(0, f"> 缺失输入：{warning}。本稿为部分生成结果，请补齐资料后重新构建。")
 
     manuscript_path = handout_dir / "manuscript.md"
     manuscript_path.write_text("\n".join(parts).rstrip() + "\n", encoding="utf-8")

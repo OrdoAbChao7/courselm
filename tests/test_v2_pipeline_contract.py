@@ -40,4 +40,4 @@ def test_v2_prompt_config_has_outline_chapter_and_appendices() -> None:
         "formula_appendix", "question_index", "final_review"
     ]
     rendered = render_chapter(book.dynamic.chapter, 2, "极限", "数列极限、函数极限")
-    assert "第2章" in rendered and "2.1 核心知识" in rendered
+    assert "第2章" in rendered and "## 题型一" in rendered

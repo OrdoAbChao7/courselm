@@ -56,9 +56,12 @@ def test_write_latex_document_supports_academic_layout(tmp_path: Path) -> None:
     )
 
     text = path.read_text(encoding="utf-8")
-    assert "\\setlength{\\parskip}{0.35em}" in text
+    assert "\\setlength{\\parskip}{0.55em}" in text
     assert "colback=white" in text
     assert "colframe=black!35" in text
+    assert "\\setcounter{tocdepth}{2}" in text
+    assert "\\setcounter{secnumdepth}{0}" in text
+    assert "\\usepackage[hidelinks,unicode]{hyperref}" in text
 
 
 def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
@@ -82,7 +85,8 @@ def test_render_markdown_repairs_multiline_table_rows() -> None:
 
     rendered = render_markdown_to_latex(source)
 
-    assert rendered.count("\\begin{longtable}") == 1
+    assert "\\begin{longtable}" not in rendered
+    assert rendered.count("\\Needspace{5\\baselineskip}") == 2
     assert "第一优先级" in rendered
     assert "（必考）" in rendered
     assert "填空题 Q1（2分）" in rendered
@@ -243,3 +247,34 @@ def test_render_markdown_repairs_latex_operator_attached_to_chinese() -> None:
     rendered = render_markdown_to_latex(r"$$x_n \le \frac{a_n}{\max分母}$$")
 
     assert r"\max\text{分母}" in rendered
+
+
+def test_render_markdown_numbers_worked_solution_steps() -> None:
+    rendered = render_markdown_to_latex("1. 求导并找候选点。\n2. 检查两侧符号。")
+    assert "\\begin{enumerate}" in rendered
+    assert rendered.count("\\item ") == 2
+    assert "\\end{enumerate}" in rendered
+
+
+def test_render_markdown_keeps_numbering_across_blank_lines() -> None:
+    rendered = render_markdown_to_latex("1. 求导。\n\n2. 检查符号。")
+    assert rendered.count("\\begin{enumerate}") == 1
+    assert rendered.count("\\item ") == 2
+
+
+def test_render_markdown_stacks_wide_tables() -> None:
+    rendered = render_markdown_to_latex(
+        "| 题型 | 条件 | 公式 | 用法 |\n| --- | --- | --- | --- |\n| 极值 | 可导 | $f'(x)$ | 看正负 |"
+    )
+    assert "\\begin{longtable}" not in rendered
+    assert "\\textbf{极值}" in rendered
+    assert "\\textbf{条件}: 可导" in rendered
+    assert "\\textbf{公式}: \\(f'(x)\\)" in rendered
+
+
+def test_render_markdown_links_to_example_anchor() -> None:
+    rendered = render_markdown_to_latex(
+        "[求极值例题](#example-1)\n\n<!-- EXAMPLE_ID: example-1 -->\n### 标准例题"
+    )
+    assert "\\hyperref[example-1]{求极值例题}" in rendered
+    assert "\\label{example-1}" in rendered

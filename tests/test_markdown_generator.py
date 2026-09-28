@@ -41,9 +41,9 @@ def test_collect_docs_has_required_v2_order() -> None:
     assert [doc.dest_rel for doc in docs] == ["00-绪论.md", "chapters/01-函数.md", "chapters/02-极限.md", "appendix/01-重要公式汇总.md", "appendix/02-典型题型索引.md", "appendix/03-考前复习提要.md"]
 
 
-def test_generate_all_writes_v2_tree(tmp_path: Path) -> None:
+def test_generate_all_writes_current_tree(tmp_path: Path) -> None:
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
-    raw = tmp_path / "output" / "数学分析" / "raw" / "v2"
+    raw = tmp_path / "output" / "数学分析" / "raw" / "v3"
     for rel in ["introduction.md", "chapters/01-函数.md", "chapters/02-极限.md", "appendices/formula_appendix.md", "appendices/question_index.md", "appendices/final_review.md"]:
         path = raw / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,3 +51,21 @@ def test_generate_all_writes_v2_tree(tmp_path: Path) -> None:
     written = generate_all(cfg(tmp_path), book, "数学分析", result())
     assert len(written) == 6
     assert (tmp_path / "output" / "数学分析" / "md" / "chapters" / "01-函数.md").is_file()
+
+
+def test_generate_all_indexes_real_worked_examples_for_obsidian(tmp_path: Path) -> None:
+    book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
+    raw = tmp_path / "output" / "数学分析" / "raw" / "v3"
+    for rel in ["introduction.md", "chapters/02-极限.md", "appendices/question_index.md"]:
+        path = raw / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("旧索引", encoding="utf-8")
+    path = raw / "chapters" / "01-函数.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("# 第1章 函数\n\n## 题型一：求极值\n\n### 标准例题：求极值\n\n题目", encoding="utf-8")
+
+    generate_all(cfg(tmp_path), book, "数学分析", result())
+
+    index = (tmp_path / "output" / "数学分析" / "md" / "appendix" / "02-典型题型索引.md").read_text(encoding="utf-8")
+    assert "[[01-函数#标准例题：求极值|第1章 函数 · 题型一：求极值]]" in index
+    assert "旧索引" not in index

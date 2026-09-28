@@ -22,7 +22,8 @@ from pydantic import BaseModel
 from modules.config import AppConfig
 from modules.markdown_sanitizer import sanitize_markdown
 from modules.prompt_runner import PipelineResult
-from modules.prompts import PromptBook
+from modules.prompts import GENERATION_SCHEMA_VERSION, PromptBook
+from modules.question_index import index_chapter, obsidian_question_index
 
 # --------------------------------------------------------------- 清洗
 
@@ -152,7 +153,7 @@ def generate_all(
 ) -> list[Path]:
     """读取 raw 缓存 → 渲染 → 写入 output/<课程>/md/。返回已写文件列表。"""
     md_dir = cfg.paths.output_dir / course_name / "md"
-    raw_dir = cfg.paths.output_dir / course_name / "raw" / "v2"
+    raw_dir = cfg.paths.output_dir / course_name / "raw" / f"v{GENERATION_SCHEMA_VERSION}"
     md_dir.mkdir(parents=True, exist_ok=True)
 
     written: list[Path] = []
@@ -173,6 +174,18 @@ def generate_all(
         dest.write_text(text, encoding="utf-8")
         logger.success("生成文档：{}/{}", course_name, doc.dest_rel)
         written.append(dest)
+
+    index_path = md_dir / "appendix" / "02-典型题型索引.md"
+    if index_path.is_file():
+        entries = []
+        for chapter_path in sorted((md_dir / "chapters").glob("*.md")):
+            _, found = index_chapter(chapter_path.read_text(encoding="utf-8"), chapter_path.name, len(entries) + 1)
+            entries.extend(found)
+        if entries:
+            index_path.write_text(
+                render_doc(obsidian_question_index(entries), course_name, "附录二 典型题型索引", cfg.markdown.tags),
+                encoding="utf-8",
+            )
 
     logger.info("文档生成完成：{}/md/ 共 {} 篇", course_name, len(written))
     return written

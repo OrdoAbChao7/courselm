@@ -65,19 +65,36 @@ def test_outline_parser_rejects_invalid_payload(payload: str) -> None:
         parse_course_outline(payload)
 
 
-def test_v2_pipeline_is_cached_and_isolates_chapter_failure(tmp_path: Path) -> None:
+def test_current_pipeline_is_cached_and_isolates_chapter_failure(tmp_path: Path) -> None:
     cfg, manifest, svc = make_cfg(tmp_path), make_manifest(tmp_path), FakeService()
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
     svc.fail_chapter = 2
     failed = run(run_pipeline(cfg, book, "数学分析", manifest, svc))
     assert failed.outline and len(failed.outline.chapters) == 2
     assert [o.title for o in failed.chapter_outcomes if not o.success] == ["极限"]
-    assert (tmp_path / "output" / "数学分析" / "raw" / "v2" / "outline.json").is_file()
+    assert (tmp_path / "output" / "数学分析" / "raw" / "v3" / "outline.json").is_file()
     svc.fail_chapter = None
     svc.ask_calls.clear()
     recovered = run(run_pipeline(cfg, book, "数学分析", manifest, svc))
     assert all(o.success for o in recovered.chapter_outcomes)
     assert sum("第2章" in q for q in svc.ask_calls) == 1
+
+
+def test_new_generation_reuses_uploaded_sources_but_not_old_answers(tmp_path: Path) -> None:
+    cfg, manifest, svc = make_cfg(tmp_path), make_manifest(tmp_path), FakeService()
+    state = tmp_path / "output" / "数学分析" / "state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text('{"generation_schema_version":2,"notebook_id":"nb-1","uploaded_files":["教材.pdf"]}', encoding="utf-8")
+    old_raw = state.parent / "raw" / "v2"
+    old_raw.mkdir(parents=True)
+    (old_raw / "outline.json").write_text("old", encoding="utf-8")
+
+    book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
+    result = run(run_pipeline(cfg, book, "数学分析", manifest, svc, stage="outline"))
+
+    assert result.outline_outcome and not result.outline_outcome.from_cache
+    assert svc.uploaded_names == []
+    assert (state.parent / "raw" / "v3" / "outline.json").is_file()
 
 
 def test_stage_and_single_chapter(tmp_path: Path) -> None:

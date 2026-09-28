@@ -28,6 +28,8 @@ def test_build_handout_follows_v2_dynamic_order(tmp_path: Path) -> None:
     assert "# 第1章 函数" in manuscript
     assert not manuscript.startswith("# 数学分析")
     assert "# 绪论" in manuscript
+    assert "来源：chapters/" not in manuscript
+    assert "可人工审阅的初稿" not in manuscript
 
 
 def test_build_handout_strips_front_matter_before_source_heading(tmp_path: Path) -> None:
@@ -48,3 +50,17 @@ def test_build_handout_reports_missing_v2_source(tmp_path: Path) -> None:
 def test_build_handout_rejects_course_path_escape(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="课程名"):
         build_handout("..\\outside", tmp_path / "output", courses_dir=tmp_path / "courses")
+
+
+def test_build_handout_links_index_to_standard_example(tmp_path: Path) -> None:
+    _write_sources(tmp_path)
+    chapter = tmp_path / "output" / "数学分析" / "md" / "chapters" / "01-函数.md"
+    chapter.write_text(
+        "# 第1章 函数\n\n## 题型一：求极值\n\n### 标准例题：求极值\n\n题目",
+        encoding="utf-8",
+    )
+
+    manuscript = build_handout("数学分析", tmp_path / "output", courses_dir=tmp_path / "courses").manuscript_path.read_text(encoding="utf-8")
+
+    assert "<!-- EXAMPLE_ID: example-1 -->\n### 标准例题：求极值" in manuscript
+    assert "[第1章 函数 · 题型一：求极值](#example-1)" in manuscript

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from modules.notebooklm import NotebookLMService, UploadReport
     from modules.prompts import PromptBook
 
-GENERATION_SCHEMA_VERSION = 2
+GENERATION_SCHEMA_VERSION = 3
 _ILLEGAL_FN_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
@@ -144,7 +144,7 @@ def _load_state(path: Path, fresh: bool) -> PipelineState:
     try:
         state = PipelineState.model_validate_json(path.read_text(encoding="utf-8"))
         if state.generation_schema_version != GENERATION_SCHEMA_VERSION:
-            return PipelineState()
+            return PipelineState(notebook_id=state.notebook_id, uploaded_files=state.uploaded_files)
         return state
     except Exception as exc:
         logger.warning("state.json 解析失败，视为无状态：{}", exc)
