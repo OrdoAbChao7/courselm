@@ -81,22 +81,32 @@ def _inline(text: str) -> str:
         return r"\textbf{" + _inline(whole_bold.group(1)) + "}"
     chunks: list[str] = []
     cursor = 0
-    for match in _MATH.finditer(text):
+    math_chunks: list[str] = []
+    for idx, match in enumerate(_MATH.finditer(text)):
         chunks.append(_escape_text(text[cursor : match.start()]))
         value = match.group(0)
         if value.startswith("$$"):
-            chunks.append("\\[" + value[2:-2] + "\\]")
+            math_chunks.append("\\[" + value[2:-2] + "\\]")
         else:
-            chunks.append("\\(" + value[1:-1] + "\\)")
+            math_chunks.append("\\(" + value[1:-1] + "\\)")
+        chunks.append(f"@@COURSELMMATH{idx}@@")
         cursor = match.end()
     chunks.append(_escape_text(text[cursor:]))
     rendered = "".join(chunks)
-    # Apply bold after math chunks are reinserted so markers can span a
-    # formula, which is common in generated explanations.
+    # Apply bold and italics while math formulas are masked with placeholders,
+    # preventing asterisks in formulas (e.g. complex conjugates like c_1^* & c_2^*)
+    # from being mangled as markdown italics.
     rendered = re.sub(r"\*\*(.+?)\*\*", r"\\textbf{\1}", rendered, flags=re.DOTALL)
     rendered = re.sub(r"\*\((.+?)\)\*", r"\\textit{\1}", rendered, flags=re.DOTALL)
     rendered = re.sub(r"\*\s+(.+?)\s+\*", r"\\textit{\1}", rendered, flags=re.DOTALL)
-    return re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\\textit{\1}", rendered)
+    rendered = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\\textit{\1}", rendered)
+    for idx, math_val in enumerate(math_chunks):
+        rendered = rendered.replace(f"@@COURSELMMATH{idx}@@", math_val)
+    return re.sub(
+        r"\[([^\]]+)\]\(\\#(example-\d+)\)",
+        lambda match: rf"\hyperref[{match.group(2)}]{{{match.group(1)}}}",
+        rendered,
+    )
 
 
 def _split_table_cells(line: str) -> list[str]:
@@ -176,6 +186,20 @@ def _table(lines: list[str]) -> str:
         return ""
     columns = max(1, len(_split_table_cells(lines[0])))
     body_lines = lines[2:] if len(lines) > 1 and _is_table_separator(lines[1]) else lines[1:]
+    if columns >= 4:
+        headers = _normalize_table_row(lines[0], columns)
+        entries: list[str] = []
+        for line in body_lines:
+            if not line.strip():
+                continue
+            cells = _normalize_table_row(line, columns)
+            details = [rf"\noindent\textbf{{{_inline(headers[i])}}}: {_inline(cells[i])}\par" for i in range(1, columns) if cells[i]]
+            entries.append(
+                "\\Needspace{5\\baselineskip}\n"
+                + rf"\noindent\textbf{{{_inline(cells[0])}}}\par" + "\n"
+                + "\n".join(details) + "\n\\medskip"
+            )
+        return "\n".join(entries)
 
     def row(cells: list[str]) -> str:
         return (
@@ -243,10 +267,39 @@ def render_markdown_to_latex(markdown: str) -> str:
     lines = normalized.splitlines()
     output: list[str] = []
     i = 0
-    in_list = False
+    in_list: str | None = None
+    pending_anchor: str | None = None
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
+        if not stripped and in_list:
+            next_index = i + 1
+            while next_index < len(lines) and not lines[next_index].strip():
+                next_index += 1
+            next_line = lines[next_index].strip() if next_index < len(lines) else ""
+            same_list = (
+                bool(re.match(r"^\d+[.)]\s+", next_line))
+                if in_list == "enumerate"
+                else next_line.startswith(("- ", "* "))
+            )
+            is_math_or_indent = (
+                next_line.startswith("$$")
+                or (next_index < len(lines) and lines[next_index].startswith(("  ", "\t")))
+            )
+            has_future_item = False
+            if in_list == "enumerate":
+                for look in range(next_index, len(lines)):
+                    look_str = lines[look].strip()
+                    if not look_str:
+                        continue
+                    if look_str.startswith(("#", "|", "> [!", "---", "```", "<!-- PAGE_BREAK -->")):
+                        break
+                    if re.match(r"^\d+[.)]\s+", look_str):
+                        has_future_item = True
+                        break
+            if same_list or is_math_or_indent or has_future_item:
+                i += 1
+                continue
         if stripped in {"<details>", "</details>"}:
             i += 1
             continue
@@ -257,9 +310,14 @@ def render_markdown_to_latex(markdown: str) -> str:
             continue
         if stripped == "<!-- PAGE_BREAK -->":
             if in_list:
-                output.append("\\end{itemize}")
-                in_list = False
+                output.append(f"\\end{{{in_list}}}")
+                in_list = None
             output.append("\\clearpage")
+            i += 1
+            continue
+        anchor = re.fullmatch(r"<!-- EXAMPLE_ID: (example-\d+) -->", stripped)
+        if anchor:
+            pending_anchor = anchor.group(1)
             i += 1
             continue
         if stripped == "---":
@@ -288,42 +346,47 @@ def render_markdown_to_latex(markdown: str) -> str:
                 safe_lines = [_escape_text(line) for line in code_lines]
                 output.append("\\begin{quote}\\small\n" + "\\par\n".join(safe_lines) + "\n\\end{quote}")
             continue
-        if stripped.startswith("$$") and stripped.count("$$") % 2 == 1:
-            math_lines = [line]
-            end = i + 1
-            found_closing = False
-            while end < len(lines):
-                candidate = lines[end].strip()
-                if not candidate or candidate == "---" or candidate.startswith(("#", "* ", "- ", ">")):
-                    break
-                math_lines.append(lines[end])
-                if lines[end].count("$$") % 2 == 1:
-                    found_closing = True
-                    break
-                end += 1
-            if found_closing:
-                output.append(_inline("\n".join(math_lines)))
-                i = end + 1
+        if stripped.startswith("$$"):
+            if stripped.count("$$") % 2 == 1:
+                math_lines = [line]
+                end = i + 1
+                found_closing = False
+                while end < len(lines):
+                    candidate = lines[end].strip()
+                    if not candidate or candidate == "---" or candidate.startswith(("#", "* ", "- ", ">")):
+                        break
+                    math_lines.append(lines[end])
+                    if lines[end].count("$$") % 2 == 1:
+                        found_closing = True
+                        break
+                    end += 1
+                if found_closing:
+                    output.append(_inline("\n".join(math_lines)))
+                    i = end + 1
+                else:
+                    output.append(_inline(stripped[2:]))
+                    i += 1
+                continue
             else:
-                output.append(_inline(stripped[2:]))
+                output.append(_inline(stripped))
                 i += 1
-            continue
+                continue
         if (
             stripped.startswith("|")
             and i + 1 < len(lines)
             and _is_table_separator(lines[i + 1])
         ):
             if in_list:
-                output.append("\\end{itemize}")
-                in_list = False
+                output.append(f"\\end{{{in_list}}}")
+                in_list = None
             table_lines, i = _collect_table_lines(lines, i)
             output.append(_table(table_lines))
             continue
         callout = _CALLOUT.match(stripped)
         if callout:
             if in_list:
-                output.append("\\end{itemize}")
-                in_list = False
+                output.append(f"\\end{{{in_list}}}")
+                in_list = None
             kind = callout.group(1).upper()
             title = callout.group(2).strip() or kind.title()
             body: list[str] = []
@@ -343,27 +406,67 @@ def render_markdown_to_latex(markdown: str) -> str:
             output.append("\\textit{" + _inline(stripped[2:]) + "}")
             i += 1
             continue
-        if stripped.startswith("- ") or stripped.startswith("* "):
-            if not in_list:
-                output.append("\\begin{itemize}")
-                in_list = True
-            output.append("\\item " + _inline(stripped[2:]))
+        numbered = re.match(r"^\d+[.)]\s+(.+)$", stripped)
+        list_kind = "enumerate" if numbered else "itemize" if stripped.startswith(("- ", "* ")) else None
+        if list_kind:
+            if in_list and in_list != list_kind:
+                output.append(f"\\end{{{in_list}}}")
+                in_list = None
+            if in_list is None:
+                output.append(f"\\begin{{{list_kind}}}")
+                in_list = list_kind
+            output.append("\\item " + _inline(numbered.group(1) if numbered else stripped[2:]))
             i += 1
             continue
         if in_list:
-            output.append("\\end{itemize}")
-            in_list = False
+            is_continuation = False
+            if line.startswith(("  ", "\t")):
+                is_continuation = True
+            elif in_list == "enumerate":
+                for look in range(i + 1, len(lines)):
+                    look_str = lines[look].strip()
+                    if not look_str:
+                        continue
+                    if look_str.startswith(("#", "|", "> [!", "---", "```", "<!-- PAGE_BREAK -->")):
+                        break
+                    if re.match(r"^\d+[.)]\s+", look_str):
+                        is_continuation = True
+                        break
+            if is_continuation:
+                output.append(_inline(stripped))
+                i += 1
+                continue
+            output.append(f"\\end{{{in_list}}}")
+            in_list = None
         heading = re.match(r"^(#{1,4})\s+(.+)$", stripped)
         if heading:
-            command = {1: "section", 2: "subsection", 3: "subsubsection", 4: "paragraph"}[len(heading.group(1))]
-            output.append(f"\\{command}{{{_inline(heading.group(2))}}}")
+            level = len(heading.group(1))
+            title = heading.group(2)
+            command = {1: "section", 2: "subsection", 3: "subsubsection", 4: "paragraph"}[level]
+            if level == 4 and title in {"解答", "答案与解析", "详细解答"}:
+                output.append("\\Needspace{4\\baselineskip}")
+                output.append("\\par\\medskip\\noindent\\rule{\\linewidth}{0.3pt}\\par\\smallskip")
+                output.append(f"\\noindent\\textbf{{{_inline(title)}}}\\par")
+                i += 1
+                continue
+            clean_title = title.strip()
+            if level == 2 and (clean_title in {"本章路线", "章末过关", "考情速览", "课时过关练习", "课时练习"} or any(clean_title.startswith(prefix) for prefix in ("考情速览", "课时过关练习", "课时过关", "章末过关", "本章路线"))):
+                command += "*"
+            if level == 1:
+                output.append("\\Needspace{8\\baselineskip}")
+            if level in {2, 3}:
+                output.append("\\Needspace{7\\baselineskip}" if any(kw in title for kw in ("标准例题", "典型例题")) else "\\Needspace{4\\baselineskip}")
+            if pending_anchor:
+                output.append(r"\phantomsection\label{" + pending_anchor + "}")
+                pending_anchor = None
+            output.append(f"\\{command}{{{_inline(title)}}}")
         elif stripped:
             output.append(_inline(stripped))
         else:
             output.append("")
         i += 1
     if in_list:
-        output.append("\\end{itemize}")
+        output.append(f"\\end{{{in_list}}}")
     rendered = "\n".join(output).strip() + "\n"
     rendered_lines = []
     for line in rendered.splitlines():
@@ -402,23 +505,33 @@ def write_latex_document(
     document = (
         "\\documentclass[UTF8,a4paper,12pt]{ctexart}\n"
         "\\usepackage{amsmath,amssymb,booktabs,geometry}\n"
+        "\\usepackage{esint}\n"
         "\\usepackage{xcolor,longtable,array}\n"
         "\\usepackage{fancyhdr}\n"
         "\\usepackage[most]{tcolorbox}\n"
+        "\\usepackage{needspace}\n"
+        "\\usepackage[hidelinks,unicode]{hyperref}\n"
         "\\geometry{margin=2.2cm}\n"
         "\\setlength{\\headheight}{15pt}\n"
         "\\setlength{\\parindent}{2em}\n"
-        "\\setlength{\\parskip}{0.35em}\n"
+        "\\setlength{\\parskip}{0.55em}\n"
+        "\\linespread{1.25}\n"
+        "\\setlength{\\emergencystretch}{2em}\n"
+        "\\raggedbottom\n"
+        "\\setcounter{tocdepth}{2}\n"
+        "\\setcounter{secnumdepth}{0}\n"
         f"\\definecolor{{primary}}{{HTML}}{{{_color(style, 'primary_color', '1F4E79')}}}\n"
         f"\\definecolor{{emphasis}}{{HTML}}{{{_color(style, 'emphasis_color', 'E67E22')}}}\n"
         f"\\definecolor{{warning}}{{HTML}}{{{_color(style, 'warning_color', 'B42318')}}}\n"
         f"\\definecolor{{success}}{{HTML}}{{{_color(style, 'success_color', '2E7D32')}}}\n"
         f"\\definecolor{{muted}}{{HTML}}{{{_color(style, 'muted_color', '6B7280')}}}\n"
+        "\\ctexset{section={format=\\Large\\bfseries\\color{primary}},subsection={format=\\large\\bfseries\\color{primary}},subsubsection={format=\\normalsize\\bfseries\\color{primary}}}\n"
         f"\\newtcolorbox{{importantbox}}[1][]{{{box_options},#1}}\n"
         f"\\newtcolorbox{{tipbox}}[1][]{{{box_options},#1}}\n"
         f"\\newtcolorbox{{warningbox}}[1][]{{{box_options},#1}}\n"
         f"\\newtcolorbox{{checkbox}}[1][]{{{box_options},#1}}\n"
         "\\pagestyle{fancy}\n\\fancyhf{}\n"
+        "\\renewcommand{\\sectionmark}[1]{\\markboth{#1}{}}\n"
         f"\\fancyhead[L]{{{_escape_text(title)}}}\n"
         "\\fancyhead[R]{\\nouppercase{\\leftmark}}\n"
         "\\fancyfoot[C]{\\thepage}\n"
@@ -426,7 +539,7 @@ def write_latex_document(
         "\\author{}\n\\date{}\n"
         "\\begin{document}\n\\maketitle\n"
         + (f"\\begin{{center}}\\large {_escape_text(subtitle)}\\end{{center}}\n" if subtitle else "")
-        + "\\tableofcontents\n\\clearpage\n"
+        + "\\tableofcontents\n"
         f"{body}"
         "\\end{document}\n"
     )

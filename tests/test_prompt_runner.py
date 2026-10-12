@@ -5,7 +5,7 @@ import pytest
 from modules.config import AppConfig
 from modules.file_manager import CourseFile, CourseManifest
 from modules.notebooklm import UploadReport
-from modules.prompt_runner import OutlineParseError, PipelineResult, parse_course_outline, run_pipeline
+from modules.prompt_runner import ChapterFormatError, OutlineParseError, PipelineResult, parse_course_outline, run_pipeline, validate_chapter_markdown
 from modules.prompts import load_prompts
 
 
@@ -46,6 +46,34 @@ class FakeService:
             raise RuntimeError("chapter failure")
         if "只输出一个 JSON" in question:
             return '{"course_name":"数学分析","chapters":[{"index":2,"title":"极限","topics":["数列极限"]},{"index":1,"title":"函数","topics":["连续性"]}]}'
+        if "你正在生成第" in question:
+            import re
+            chapter_number = re.search(r"你正在生成第(\d+)章", question).group(1)
+            return (
+                f"# 第{chapter_number}章 示例\n\n"
+                f"## 考情速览\n"
+                f"| 考点 / 题型 | 重要程度 | 预计分值 | 常见题型 |\n"
+                f"| :--- | :--- | :--- | :--- |\n"
+                f"| 1. 基础题型 | 必考 | 10分 | 大题 |\n\n"
+                f"提分策略：掌握基础题型即可稳拿高分。\n\n"
+                f"## 题型一：基础题\n"
+                f"### 核心考点与速记口诀\n"
+                f"- **速记口诀**：先看条件再代公式。\n"
+                f"### 标准例题：基础题\n"
+                f"题目。[必要补充]\n"
+                f"### 跟着做\n"
+                f"1. 第一步，因为条件成立。\n"
+                f"### 避坑提醒\n"
+                f"1. 识别题型。\n"
+                f"### 自己试\n"
+                f"练习。提示：先看条件。\n"
+                f"#### 解答\n"
+                f"第一步。\n"
+                f"## 课时过关练习\n"
+                f"练习。提示：回看题型一。\n"
+                f"#### 解答\n"
+                f"过关解答。"
+            )
         return "# 生成内容\n\n内容。"
 
 
@@ -90,17 +118,97 @@ def test_new_generation_reuses_uploaded_sources_but_not_old_answers(tmp_path: Pa
     (old_raw / "outline.json").write_text("old", encoding="utf-8")
 
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
-    result = run(run_pipeline(cfg, book, "数学分析", manifest, svc, stage="outline"))
+    result = run(run_pipeline(cfg, book, "数学分析", manifest, svc))
 
     assert result.outline_outcome and not result.outline_outcome.from_cache
     assert svc.uploaded_names == []
     assert (state.parent / "raw" / "v3" / "outline.json").is_file()
 
 
-def test_stage_and_single_chapter(tmp_path: Path) -> None:
+def test_pipeline_only_requests_core_content(tmp_path: Path) -> None:
     cfg, manifest, svc = make_cfg(tmp_path), make_manifest(tmp_path), FakeService()
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
-    result: PipelineResult = run(run_pipeline(cfg, book, "数学分析", manifest, svc, stage="outline"))
-    assert result.outline and result.chapter_outcomes == []
-    result = run(run_pipeline(cfg, book, "数学分析", manifest, svc, chapter=1))
-    assert [o.title for o in result.chapter_outcomes] == ["函数"]
+    result = run(run_pipeline(cfg, book, "数学分析", manifest, svc))
+    assert [o.title for o in result.chapter_outcomes] == ["函数", "极限"]
+    assert len(svc.ask_calls) == 4
+
+
+def test_chapter_validation_rejects_method_before_example() -> None:
+    invalid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 从题归纳\n方法。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 自己试\n提示：... 解答：...\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="顺序"):
+        validate_chapter_markdown(invalid, 1)
+
+
+def test_chapter_validation_rejects_missing_practice_solution() -> None:
+    invalid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="提示.*解答"):
+        validate_chapter_markdown(invalid, 1)
+
+
+def test_chapter_validation_requires_separate_practice_solution() -> None:
+    invalid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。提示：先看条件。解答：第一步。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="独立的解答标题"):
+        validate_chapter_markdown(invalid, 1)
+
+
+def test_chapter_validation_rejects_old_separate_knowledge_block() -> None:
+    invalid = "# 第1章 函数\n## 核心知识\n定义。\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。提示：先看条件。\n#### 解答\n第一步。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="二级标题"):
+        validate_chapter_markdown(invalid, 1)
+
+
+def test_chapter_validation_requires_example_source_label() -> None:
+    invalid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。提示：先看条件。\n#### 解答\n第一步。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="来源标记"):
+        validate_chapter_markdown(invalid, 1)
+
+
+def test_chapter_validation_rejects_question_type_after_chapter_check() -> None:
+    valid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。提示：先看条件。\n#### 解答\n第一步。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="顺序"):
+        validate_chapter_markdown(valid + "\n## 题型二：额外题型\n", 1)
+
+
+def test_chapter_validation_rejects_speculative_exam_priority() -> None:
+    valid = "# 第1章 函数\n## 本章路线\n路线。\n## 题型一：基础题\n### 先知道什么\n概念。\n### 标准例题：基础题\n题目。[必要补充]\n### 跟着做\n1. 解答。\n### 从题归纳\n方法。\n### 自己试\n练习。提示：先看条件。\n#### 解答\n第一步。\n## 章末过关\n练习。"
+    with pytest.raises(ChapterFormatError, match="未经证实"):
+        validate_chapter_markdown(valid.replace("路线。", "这是基础得分盘 [推测]。"), 1)
+
+
+def test_chapter_validation_accepts_authentic_cram_course_format() -> None:
+    cram = """# 第1章 极限与连续
+
+## 考情速览
+| 考点 / 题型 | 重要程度 | 预计分值 | 常见题型 |
+| :--- | :--- | :--- | :--- |
+| 1. 函数与极限 | 必考 | 6~10分 | 选择、计算 |
+
+提分策略：掌握洛必达与等价代换口诀，直接秒杀前两道计算大题。
+
+## 题型一：未定式求极限
+### 核心考点与速记口诀
+- 公式：$\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1$。
+- **速记口诀**：等价代换抓乘除，加减泰勒防陷阱。
+
+### 标准例题：0比0型极限
+求极限 $\\lim_{x \\to 0} \\frac{\\tan x - x}{x^3}$。[真题·2023]
+
+### 跟着做
+1. 代入为 0/0 型。
+2. 洛必达求导得结果 $\\frac{1}{3}$。
+
+### 避坑提醒
+加减法切忌直接替换等价无穷小。
+
+### 自己试
+练习题。提示：先判断类型。
+#### 解答
+分步解答与答案。
+
+## 课时过关练习
+综合题。提示：利用重要极限。
+#### 解答
+结果与回看题型一。
+"""
+    validate_chapter_markdown(cram, 1)
+

@@ -6,10 +6,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from modules.prompts import GENERATION_SCHEMA_VERSION
+
 
 _CHAPTER = re.compile(r"^#\s+(第\d+章\s+.+?)\s*$")
-_TYPE = re.compile(r"^##\s+(题型(?:[一二三四五六七八九十]+|\d+)\s*[：:].+?)\s*$")
-_EXAMPLE = re.compile(r"^###\s+(标准例题(?:\s*[：:].*)?)\s*$")
+_TYPE = re.compile(r"^##\s+((?:题型|考点)(?:[一二三四五六七八九十]+|\d+)\s*[：:].+?)\s*$")
+_EXAMPLE = re.compile(r"^###\s+((?:标准例题|典型例题)(?:\s*[：:].*)?)\s*$")
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,10 @@ class ExampleEntry:
     @property
     def label(self) -> str:
         return f"{self.chapter} · {self.question_type}"
+
+
+def is_current_generation(content: str) -> bool:
+    return bool(re.search(rf"(?m)^generation_schema_version:\s*{GENERATION_SCHEMA_VERSION}\s*$", content[:1000]))
 
 
 def index_chapter(content: str, filename: str, first_number: int = 1, *, annotate: bool = False) -> tuple[str, list[ExampleEntry]]:

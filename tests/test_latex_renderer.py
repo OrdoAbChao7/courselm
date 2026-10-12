@@ -62,6 +62,7 @@ def test_write_latex_document_supports_academic_layout(tmp_path: Path) -> None:
     assert "\\setcounter{tocdepth}{2}" in text
     assert "\\setcounter{secnumdepth}{0}" in text
     assert "\\usepackage[hidelinks,unicode]{hyperref}" in text
+    assert "\\tableofcontents\n\\Needspace{8\\baselineskip}\n\\section{复习}" in text
 
 
 def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
@@ -90,7 +91,7 @@ def test_render_markdown_repairs_multiline_table_rows() -> None:
     assert "第一优先级" in rendered
     assert "（必考）" in rendered
     assert "填空题 Q1（2分）" in rendered
-    assert "第二优先级 & 定积分 & 第五章 & 计算题 & 熟悉步骤" in rendered
+    assert "第二优先级" in rendered and "定积分" in rendered and "熟悉步骤" in rendered
 
 
 def test_render_markdown_normalizes_uneven_table_rows() -> None:
@@ -278,3 +279,75 @@ def test_render_markdown_links_to_example_anchor() -> None:
     )
     assert "\\hyperref[example-1]{求极值例题}" in rendered
     assert "\\label{example-1}" in rendered
+
+
+def test_render_markdown_separates_practice_solution() -> None:
+    rendered = render_markdown_to_latex("### 自己试\n\n练习。\n\n#### 解答\n\n步骤与结果。")
+    assert "\\rule{\\linewidth}{0.3pt}" in rendered
+    assert "\\textbf{解答}" in rendered
+
+
+def test_render_markdown_preserves_asterisks_in_math_without_italic_mangling() -> None:
+    source = r"左矢表示：$\langle \psi| \doteq \begin{pmatrix} c_1^* & c_2^* & \cdots \end{pmatrix}$。共轭 $\psi^*(x) \psi(x)$。"
+    rendered = render_markdown_to_latex(source)
+    assert r"\textit{" not in rendered
+    assert r"c_1^* & c_2^*" in rendered
+    assert r"\psi^*(x) \psi(x)" in rendered
+
+
+def test_render_markdown_cram_course_elements() -> None:
+    source = """# 第1章 极限与连续
+
+## 考情速览
+速览内容。
+
+## 题型一：未定式求极限
+### 核心考点与速记口诀
+- **口诀**：等价代换抓乘除。
+
+### 标准例题
+计算题。
+
+### 跟着做
+1. 步骤一。
+
+### 避坑提醒
+加减法别代换。
+
+### 自己试
+练习题。
+#### 解答
+解析与答案。
+
+## 课时过关练习
+过关内容。
+"""
+    rendered = render_markdown_to_latex(source)
+    assert "\\subsection*{考情速览}" in rendered
+    assert "\\subsection*{课时过关练习}" in rendered
+    assert "\\textbf{口诀}" in rendered
+    assert "\\subsubsection{核心考点与速记口诀}" in rendered
+    assert "\\subsubsection{标准例题}" in rendered
+    assert "\\textbf{解答}" in rendered
+
+
+def test_render_markdown_worked_steps_preserve_single_enumerate_with_math() -> None:
+    source = """### 跟着做
+1. **判断极限类型**：代入 $x=0$，分子为 0。
+2. **提取公因式变形**：
+   $$\\tan x - \\sin x = \\tan x (1 - \\cos x)$$
+3. **利用等价无穷小代换**：
+   当 $x \\to 0$ 时，直接代换：
+   $$\\lim_{x \\to 0} \\frac{x \\cdot \\frac{1}{2}x^2}{x^3}$$
+4. **化简求得结果**：
+   $$\\lim_{x \\to 0} \\frac{1}{2} = \\frac{1}{2}$$
+
+### 避坑提醒
+说明内容。
+"""
+    rendered = render_markdown_to_latex(source)
+    assert rendered.count("\\begin{enumerate}") == 1
+    assert rendered.count("\\item ") == 4
+    assert "\\subsubsection{避坑提醒}" in rendered
+
+

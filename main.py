@@ -1,10 +1,4 @@
-"""CourseLM Automation Pipeline — CLI 入口。
-
-子命令：
-    login    交互式登录 NotebookLM（一次即可）
-    scan     扫描课程目录，列出识别到的资料清单
-    generate 完整流水线（Step 3 后续里程碑实现）
-"""
+"""CourseLM：登录、生成讲义、离线导出 PDF。"""
 
 from __future__ import annotations
 
@@ -20,7 +14,7 @@ from pathlib import Path
 from loguru import logger
 
 from modules.config import ConfigurationError, load_config
-from modules.browser_check import chrome_available
+from modules.handout_template import HandoutTemplateError
 from modules.logging_setup import setup_logging
 from modules.path_manager import build_runtime_env
 
@@ -32,24 +26,16 @@ EXIT_RUNTIME = 2    # 运行时失败
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="courselm",
-        description="课程资料 → NotebookLM → Obsidian 复习文档 自动化流水线",
+        description="课程资料 → NotebookLM → Markdown / PDF 复习讲义",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("login", help="登录 NotebookLM（浏览器交互，仅需一次）")
 
-    p_scan = sub.add_parser("scan", help="扫描课程目录，列出资料清单")
-    p_scan.add_argument("course", help="课程名（courses/ 下的目录名）")
-
     p_gen = sub.add_parser("generate", help="生成课程结构驱动的期末复习讲义资料")
     p_gen.add_argument("course", help="课程名")
     p_gen.add_argument("--fresh", action="store_true", help="忽略缓存，强制重跑")
-    p_gen.add_argument("--stage", choices=["outline", "introduction", "appendices"], default=None,
-                       help="只运行指定阶段；章节可用 --chapter 单独运行")
-    p_gen.add_argument("--chapter", type=int, default=None, help="只生成指定章节（从 1 开始）")
-
-    p_handout = sub.add_parser("build-handout", help="从 Obsidian Markdown 生成讲义初稿和 LaTeX 源码")
-    p_handout.add_argument("course", help="课程名")
+    p_gen.add_argument("--no-pdf", action="store_true", help="只生成 Markdown 和 LaTeX 源码，不编译 PDF")
 
     p_export = sub.add_parser("export-handout", help="编译讲义 LaTeX 并导出 PDF")
     p_export.add_argument("course", help="课程名")
@@ -117,62 +103,27 @@ def _build_handout_files(cfg, course: str):
     return result
 
 
-def cmd_build_handout(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    try:
-        result = _build_handout_files(cfg, args.course)
-    except (OSError, ValueError) as e:
-        logger.error("讲义生成失败：{}", e)
-        return EXIT_USAGE
-    print(f"讲义初稿已生成：{result.manuscript_path}")
-    print(f"LaTeX 源码已生成：{result.tex_path}")
+def _export_pdf(cfg, course: str, result) -> int:
     if result.missing_inputs:
-        print(f"缺失输入：{', '.join(result.missing_inputs)}")
+        logger.error("讲义输入不完整：{}", "、".join(result.missing_inputs))
         return EXIT_RUNTIME
-    return EXIT_OK
-
-
-def cmd_export_handout(args: argparse.Namespace) -> int:
-    cfg = load_config()
-    try:
-        result = _build_handout_files(cfg, args.course)
-    except (OSError, ValueError) as e:
-        logger.error("讲义生成失败：{}", e)
-        return EXIT_USAGE
     ok, log = compile_latex(result.tex_path)
     if not ok:
         result.tex_path.with_suffix(".log").write_text(log, encoding="utf-8")
         logger.error("LaTeX 编译失败：{}", log)
         return EXIT_RUNTIME
-    release_dir = cfg.paths.output_dir / args.course / "release"
+    release_dir = cfg.paths.output_dir / course / "release"
     release_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = result.tex_path.with_suffix(".pdf")
-    target = release_dir / f"{args.course}-期末复习讲义.pdf"
-    shutil.copy2(pdf_path, target)
+    target = release_dir / f"{course}-期末复习讲义.pdf"
+    shutil.copy2(result.tex_path.with_suffix(".pdf"), target)
     print(f"PDF 已导出：{target}")
     return EXIT_OK
 
 
-def cmd_scan(args: argparse.Namespace) -> int:
+def cmd_export_handout(args: argparse.Namespace) -> int:
     cfg = load_config()
-    from modules.file_manager import scan_course
-
-    try:
-        manifest = scan_course(
-            cfg.paths.courses_dir,
-            args.course,
-            cfg.file_types,
-            source_limit_warn=cfg.notebooklm.source_limit_warn,
-        )
-    except Exception as e:  # CourseNotFoundError / NoCourseFilesError
-        logger.error("{}", e)
-        return EXIT_USAGE
-
-    print(f"\n课程「{args.course}」资料清单：")
-    for f in manifest.files:
-        print(f"  [{f.category:>5}] {f.size_bytes:>12,} B  {f.path.relative_to(manifest.root)}")
-    print(f"\n共 {len(manifest.files)} 个文件，{manifest.total_size_bytes / 1024 / 1024:.1f} MB")
-    return EXIT_OK
+    result = _build_handout_files(cfg, args.course)
+    return _export_pdf(cfg, args.course, result)
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -199,10 +150,12 @@ def cmd_generate(args: argparse.Namespace) -> int:
         logger.error("Prompt 配置错误：{}", e)
         return EXIT_USAGE
 
+    from modules.handout_template import HandoutTemplateError, load_handout_template
+
     try:
-        cfg.require_vault()  # 提前校验，避免流水线跑完才发现没配
-    except ConfigurationError as e:
-        logger.error("{}", e)
+        load_handout_template(args.course, cfg.paths.courses_dir)
+    except HandoutTemplateError as e:
+        logger.error("讲义模板配置错误：{}", e)
         return EXIT_USAGE
 
     # ---- 流水线 ----
@@ -220,7 +173,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
             ) as svc:
                 return await run_pipeline(
                     cfg, book, args.course, manifest, svc,
-                    stage=args.stage, chapter=args.chapter, fresh=args.fresh,
+                    fresh=args.fresh,
                 )
 
         result = asyncio.run(_pipeline())
@@ -236,11 +189,28 @@ def cmd_generate(args: argparse.Namespace) -> int:
     from modules.obsidian_sync import ObsidianSyncError, sync_course
 
     written = generate_all(cfg, book, args.course, result)
-    try:
-        synced = sync_course(cfg, args.course)
-    except ObsidianSyncError as e:
-        logger.error("{}", e)
-        return EXIT_RUNTIME
+    status = EXIT_RUNTIME if result.failures else EXIT_OK
+    # 失败阶段仍保存成功章节，但不能发布不完整的 PDF。
+    if not result.failures:
+        handout = _build_handout_files(cfg, args.course)
+        print(f"讲义初稿已生成：{handout.manuscript_path}")
+        print(f"LaTeX 源码已生成：{handout.tex_path}")
+        if handout.missing_inputs:
+            logger.error("讲义输入不完整：{}", "、".join(handout.missing_inputs))
+            status = EXIT_RUNTIME
+        elif not args.no_pdf:
+            if shutil.which("xelatex"):
+                status = _export_pdf(cfg, args.course, handout)
+            else:
+                print("未找到 xelatex，已保留 Markdown 和 LaTeX 源码。安装后运行 courselm export-handout " + args.course)
+
+    synced = []
+    if cfg.obsidian.vault_path.strip() and written:
+        try:
+            synced = sync_course(cfg, args.course, files=written)
+        except (ObsidianSyncError, OSError) as e:
+            logger.error("本地文档已保留，Obsidian 同步失败：{}", e)
+            status = EXIT_RUNTIME
 
     # ---- 汇总 ----
     all_outcomes = result.all_outcomes
@@ -248,11 +218,10 @@ def cmd_generate(args: argparse.Namespace) -> int:
     cached = [o for o in ok if o.from_cache]
 
     print(f"\n{'=' * 56}")
-    print(f"课程「{args.course}」处理完成")
+    print(f"课程「{args.course}」处理结果")
     print(f"  课程结构：识别 {len(result.outline.chapters) if result.outline else 0} 章")
     print(f"  绪论    ：{'完成' if result.introduction_outcome and result.introduction_outcome.success else '未完成'}")
     print(f"  章节    ：{sum(o.success for o in result.chapter_outcomes)}/{len(result.chapter_outcomes)} 完成")
-    print(f"  附录    ：{sum(o.success for o in result.appendix_outcomes)}/3 完成")
     print(f"  缓存命中：{len(cached)}")
     print(f"  生成文档: {len(written)} 篇 → {cfg.paths.output_dir / args.course / 'md'}")
     print(f"  同步 Vault: {len(synced)} 篇")
@@ -262,13 +231,13 @@ def cmd_generate(args: argparse.Namespace) -> int:
             print(f"    - {o.title}: {o.error}")
         print(f"\n  修复后重新运行同一命令即可续跑（缓存自动跳过已成功部分）")
     print(f"{'=' * 56}")
-    return EXIT_OK if not result.failures else EXIT_RUNTIME
+    return status
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    # 必须在 NotebookLM 客户端初始化或登录子进程之前隔离 Portable 数据目录。
+    # 复用项目内的登录态。
     os.environ.update(build_runtime_env())
 
     try:
@@ -284,30 +253,19 @@ def main(argv: list[str] | None = None) -> int:
 
     setup_proxy(cfg.network.proxy)
 
-    if args.command in {"login", "generate"} and cfg.notebooklm.browser == "chrome":
-        if not chrome_available():
-            logger.error(
-                "未检测到 Google Chrome。\n"
-                "CourseLM 轻量版需要使用电脑上已安装的 Google Chrome "
-                "访问 NotebookLM。\n"
-                "请安装 Google Chrome 后重新启动 CourseLM。"
-            )
-            return EXIT_RUNTIME
-
-    if args.command == "login":
-        from modules.notebooklm import run_login
-
-        return run_login(cfg.notebooklm.browser)
-    if args.command == "scan":
-        return cmd_scan(args)
-    if args.command == "generate":
-        return cmd_generate(args)
-    if args.command == "build-handout":
-        return cmd_build_handout(args)
-    if args.command == "export-handout":
+    try:
+        if args.command == "login":
+            from modules.notebooklm import run_login
+            return run_login(cfg.notebooklm.browser)
+        if args.command == "generate":
+            return cmd_generate(args)
         return cmd_export_handout(args)
-    parser.error(f"未知命令：{args.command}")
-    return EXIT_USAGE
+    except (ConfigurationError, ValueError, HandoutTemplateError) as exc:
+        logger.error("{}", exc)
+        return EXIT_USAGE
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.error("处理失败：{}", exc)
+        return EXIT_RUNTIME
 
 
 if __name__ == "__main__":

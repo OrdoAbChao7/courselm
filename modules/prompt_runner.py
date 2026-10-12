@@ -1,11 +1,11 @@
-"""NotebookLM v2 pipeline: outline -> introduction -> chapters -> appendices."""
+"""NotebookLM pipeline: outline -> introduction -> chapters."""
 
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator
@@ -26,6 +26,58 @@ class PromptRunnerError(Exception):
 
 class OutlineParseError(PromptRunnerError):
     """课程结构 JSON 无法解析或不满足契约。"""
+
+
+class ChapterFormatError(PromptRunnerError):
+    """章节缺少由例题到练习的可读教学顺序。"""
+
+
+def validate_chapter_markdown(text: str, chapter_index: int) -> None:
+    """Reject a chapter that omits the agreed cram-course worked-example learning loop."""
+    if not re.search(rf"(?m)^#\s+第{chapter_index}章\s+.+$", text):
+        raise ChapterFormatError(f"第{chapter_index}章缺少正确章标题")
+    if re.search(r"\[推测\]|得分盘|冲刺盘", text):
+        raise ChapterFormatError("章节出现未经证实的考试标签")
+    route = re.search(r"(?m)^##\s+(?:考情速览|本章路线)\s*$", text)
+    end = re.search(r"(?m)^##\s+(?:课时过关练习|章末过关|课时练习)\s*$", text)
+    types = list(re.finditer(r"(?m)^##\s+(?:题型|考点)(?:[一二三四五六七八九十]+|\d+)\s*[：:].+$", text))
+    valid_h2 = {"考情速览", "本章路线", "课时过关练习", "章末过关", "课时练习"}
+    for heading in re.findall(r"(?m)^##\s+(.+?)\s*$", text):
+        if heading not in valid_h2 and not re.fullmatch(r"(?:题型|考点)(?:[一二三四五六七八九十]+|\d+)\s*[：:].+", heading):
+            raise ChapterFormatError(f"出现与例题教学顺序无关的二级标题：{heading}")
+    if not route or not end or not types or not (route.start() < types[0].start() and all(item.start() < end.start() for item in types)):
+        raise ChapterFormatError("章节须按考情速览/本章路线、题型、课时过关练习/章末过关的顺序组织")
+    required_stages = [
+        ("核心考点与速记口诀", "先知道什么", "核心考点", "考点速记"),
+        ("标准例题", "典型例题"),
+        ("跟着做", "规范解答"),
+        ("避坑提醒", "从题归纳", "解题技巧"),
+        ("自己试", "独立练习"),
+    ]
+    for number, match in enumerate(types):
+        block_end = types[number + 1].start() if number + 1 < len(types) else end.start()
+        block = text[match.end():block_end]
+        headings = list(re.finditer(r"(?m)^###\s+(.+?)\s*$", block))
+        positions: list[int] = []
+        for stage_options in required_stages:
+            found = next((item for item in headings if any(item.group(1).startswith(opt) for opt in stage_options)), None)
+            if found is None:
+                raise ChapterFormatError(f"题型{number + 1}缺少{stage_options[0]}")
+            positions.append(found.start())
+            following = next((item.start() for item in headings if item.start() > found.start()), len(block))
+            if not block[found.end():following].strip():
+                raise ChapterFormatError(f"题型{number + 1}的{stage_options[0]}没有内容")
+            if any(opt in stage_options for opt in ("标准例题", "典型例题")) and not re.search(
+                r"\[(?:真题[·.][^\]]+|老师题库|老师课件|作业原题|教材例题|改编题|必要补充)\]",
+                block[found.end():following],
+            ):
+                raise ChapterFormatError(f"题型{number + 1}的标准例题缺少来源标记")
+        if positions != sorted(positions):
+            raise ChapterFormatError(f"题型{number + 1}的小节顺序错误：应先讲标准例题再归纳")
+        practice = block[positions[-1]:]
+        solution = re.search(r"(?m)^####\s+(?:解答|答案与解析|详细解答)\s*$", practice)
+        if not solution or "提示" not in practice[:solution.start()] or not practice[solution.end():].strip():
+            raise ChapterFormatError(f"题型{number + 1}的自己试需要先给提示，再给独立的解答标题和内容")
 
 
 class ChapterPlan(BaseModel):
@@ -111,11 +163,10 @@ class PipelineResult(BaseModel):
     outline_outcome: PromptOutcome | None = None
     introduction_outcome: PromptOutcome | None = None
     chapter_outcomes: list[PromptOutcome] = Field(default_factory=list)
-    appendix_outcomes: list[PromptOutcome] = Field(default_factory=list)
 
     @property
     def all_outcomes(self) -> list[PromptOutcome]:
-        return [o for o in [self.outline_outcome, self.introduction_outcome] if o] + self.chapter_outcomes + self.appendix_outcomes
+        return [o for o in [self.outline_outcome, self.introduction_outcome] if o] + self.chapter_outcomes
 
     @property
     def failures(self) -> list[PromptOutcome]:
@@ -162,18 +213,15 @@ async def run_pipeline(
     manifest: CourseManifest,
     svc: NotebookLMService,
     *,
-    stage: Literal["outline", "introduction", "appendices"] | None = None,
-    chapter: int | None = None,
     fresh: bool = False,
 ) -> PipelineResult:
-    """执行 v2 流程；stage/chapter 用于开发调试和断点恢复。"""
-    from modules.prompts import render_appendix, render_chapter, render_introduction, render_outline
+    """生成大纲、绪论与全部章节，自动跳过有效缓存。"""
+    from modules.prompts import render_chapter, render_introduction, render_outline
 
     out_dir = cfg.paths.output_dir / course_name
     raw_dir = out_dir / "raw" / f"v{GENERATION_SCHEMA_VERSION}"
     chapters_dir = raw_dir / "chapters"
-    appendices_dir = raw_dir / "appendices"
-    for directory in (raw_dir, chapters_dir, appendices_dir):
+    for directory in (raw_dir, chapters_dir):
         directory.mkdir(parents=True, exist_ok=True)
     state_path = out_dir / "state.json"
     state = _load_state(state_path, fresh)
@@ -215,8 +263,6 @@ async def run_pipeline(
             result.outline_outcome = PromptOutcome(key="course_outline", title=book.planning.course_outline.title, success=False, error=str(exc))
             return result
     result.outline = outline
-    if stage == "outline":
-        return result
 
     outline_text = json.dumps(outline.model_dump(), ensure_ascii=False, indent=2)
     intro_path = raw_dir / "introduction.md"
@@ -229,36 +275,30 @@ async def run_pipeline(
             result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=True, raw_file="introduction.md")
         except Exception as exc:
             result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=False, error=str(exc))
-    if stage == "introduction":
-        return result
-
-    selected = [item for item in outline.chapters if chapter is None or item.index == chapter]
-    if chapter is not None and not selected:
-        raise PromptRunnerError(f"不存在第 {chapter} 章")
-    for item in selected:
+    for item in outline.chapters:
         path = chapters_dir / f"{item.index:02d}-{_slug(item.title)}.md"
         key = f"chapter_{item.index:02d}"
         if path.is_file() and not fresh:
-            result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, from_cache=True, raw_file=f"chapters/{path.name}"))
-            continue
+            try:
+                validate_chapter_markdown(path.read_text(encoding="utf-8"), item.index)
+                result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, from_cache=True, raw_file=f"chapters/{path.name}"))
+                continue
+            except ChapterFormatError as exc:
+                logger.warning("章节缓存结构无效，重新生成第{}章：{}", item.index, exc)
         try:
-            answer = await _ask_with_retry(svc, notebook_id, render_chapter(book.dynamic.chapter, item.index, item.title, "、".join(item.topics), outline_text), cfg.prompt_runner.retry)
+            question = render_chapter(book.dynamic.chapter, item.index, item.title, "、".join(item.topics), outline_text)
+            for attempt in range(2):
+                answer = await _ask_with_retry(svc, notebook_id, question, cfg.prompt_runner.retry)
+                try:
+                    validate_chapter_markdown(answer, item.index)
+                    break
+                except ChapterFormatError as exc:
+                    if attempt:
+                        raise
+                    question += f"\n\n上次输出不符合讲义结构：{exc}。请重新完整生成本章，逐题型遵守标准例题→跟着做→从题归纳→自己试的顺序。"
             path.write_text(answer, encoding="utf-8")
             result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, raw_file=f"chapters/{path.name}"))
         except Exception as exc:
             result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=False, error=str(exc)))
 
-    if chapter is not None or stage == "chapters":
-        return result
-    for prompt in book.appendices:
-        path = appendices_dir / f"{prompt.id}.md"
-        if path.is_file() and not fresh:
-            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=True, from_cache=True, raw_file=f"appendices/{path.name}"))
-            continue
-        try:
-            answer = await _ask_with_retry(svc, notebook_id, render_appendix(prompt, outline_text), cfg.prompt_runner.retry)
-            path.write_text(answer, encoding="utf-8")
-            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=True, raw_file=f"appendices/{path.name}"))
-        except Exception as exc:
-            result.appendix_outcomes.append(PromptOutcome(key=prompt.id, title=prompt.title, success=False, error=str(exc)))
     return result

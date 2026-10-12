@@ -27,43 +27,6 @@ from modules.question_index import index_chapter, obsidian_question_index
 
 # --------------------------------------------------------------- 清洗
 
-_CODE_BLOCK = re.compile(r"(```.*?```|~~~.*?~~~)", re.DOTALL)
-_DISPLAY_MATH = re.compile(r"\\\[(.+?)\\\]", re.DOTALL)
-_INLINE_MATH = re.compile(r"\\\((.+?)\\\)", re.DOTALL)
-_MULTI_BLANK = re.compile(r"\n{3,}")
-
-# 零宽字符与 BOM（NotebookLM 偶发输出）
-_INVISIBLE = dict.fromkeys(map(ord, "\ufeff\u200b\u200c\u200d"), None)
-
-
-def _convert_math(text: str) -> str:
-    """LaTeX 定界符归一：\\[..\\] → $$..$$，\\(..\\) → $..$（代码块外调用）。"""
-    text = _DISPLAY_MATH.sub(lambda m: f"$${m.group(1).strip()}$$", text)
-    text = _INLINE_MATH.sub(lambda m: f"${m.group(1).strip()}$", text)
-    return text
-
-
-def _legacy_clean_markdown(text: str) -> str:
-    """防御性清洗：公式定界符、空行、不可见字符。
-
-    代码块（``` / ~~~ 围栏）内容原样保留——其中的 \\[ \\( 是字面代码，
-    不能被公式转换破坏。
-    """
-    text = text.translate(_INVISIBLE).replace("\r\n", "\n")
-
-    out_parts: list[str] = []
-    for i, seg in enumerate(_CODE_BLOCK.split(text)):
-        if not seg:
-            continue
-        if i % 2 == 1:  # 代码块：原样保留（仅去零宽字符，上面已做）
-            out_parts.append(seg)
-        else:
-            seg = _convert_math(seg)
-            seg = _MULTI_BLANK.sub("\n\n", seg)
-            out_parts.append(seg)
-    return "".join(out_parts).strip()
-
-
 def clean_markdown(text: str) -> str:
     """统一委托给 Markdown Sanitizer。"""
     return sanitize_markdown(text)
@@ -88,6 +51,7 @@ def render_doc(
     meta: dict = {
         "course": course_name,
         "type": doc_type,
+        "generation_schema_version": GENERATION_SCHEMA_VERSION,
         "tags": [_safe_tag(t) for t in (*tags, doc_type)],
         "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
@@ -114,7 +78,7 @@ class MarkdownDoc(BaseModel):
 
 
 def collect_docs(book: PromptBook, result: PipelineResult) -> list[MarkdownDoc]:
-    """从 v2 流水线结果推导绪论、动态章节和附录文档清单。"""
+    """从流水线结果推导绪论与动态章节文档清单。"""
     docs: list[MarkdownDoc] = []
     if result.introduction_outcome and result.introduction_outcome.success:
         docs.append(MarkdownDoc(
@@ -131,16 +95,6 @@ def collect_docs(book: PromptBook, result: PipelineResult) -> list[MarkdownDoc]:
                 doc_type=book.dynamic.chapter.title,
                 title=outcome.title,
                 extra_meta={"chapter": outcome.key.removeprefix("chapter_")},
-            ))
-    appendix_by_id = {item.id: item for item in book.appendices}
-    for outcome in result.appendix_outcomes:
-        if outcome.success and outcome.key in appendix_by_id:
-            prompt = appendix_by_id[outcome.key]
-            docs.append(MarkdownDoc(
-                dest_rel=prompt.output_file,
-                raw_file=outcome.raw_file,
-                doc_type=prompt.title,
-                title=prompt.title,
             ))
     return docs
 
@@ -175,17 +129,23 @@ def generate_all(
         logger.success("生成文档：{}/{}", course_name, doc.dest_rel)
         written.append(dest)
 
-    index_path = md_dir / "appendix" / "02-典型题型索引.md"
-    if index_path.is_file():
-        entries = []
-        for chapter_path in sorted((md_dir / "chapters").glob("*.md")):
-            _, found = index_chapter(chapter_path.read_text(encoding="utf-8"), chapter_path.name, len(entries) + 1)
-            entries.extend(found)
-        if entries:
-            index_path.write_text(
-                render_doc(obsidian_question_index(entries), course_name, "附录二 典型题型索引", cfg.markdown.tags),
-                encoding="utf-8",
-            )
+    entries = []
+    for doc in collect_docs(book, result):
+        if not doc.raw_file.startswith("chapters/"):
+            continue
+        chapter_path = md_dir / doc.dest_rel
+        if chapter_path not in written:
+            continue
+        _, found = index_chapter(chapter_path.read_text(encoding="utf-8"), chapter_path.name, len(entries) + 1)
+        entries.extend(found)
+    if entries:
+        index_path = md_dir / "appendix" / "02-典型题型索引.md"
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            render_doc(obsidian_question_index(entries), course_name, "典型题型索引", cfg.markdown.tags),
+            encoding="utf-8",
+        )
+        written.append(index_path)
 
     logger.info("文档生成完成：{}/md/ 共 {} 篇", course_name, len(written))
     return written

@@ -1,17 +1,17 @@
-CourseLM Portable 使用说明
+CourseLM 使用说明
 
-系统要求：
-Windows 10/11 64 位
-Google Chrome
-互联网连接
+需要 Python 3.11+ 和可访问 NotebookLM 的网络。
+安装与浏览器配置见 README.md。
 
-第一次使用：
-1. 解压整个压缩包。
-2. 双击 CourseLM.exe。
-3. 在 NotebookLM 登录 Google。
-4. 把课程资料放入 courses 文件夹，或使用界面选择已有课程。
-5. 在 config/config.yaml 中填写 Obsidian Vault 路径后开始生成。
+1. 首次运行 courselm login，完成 Google 登录。
+2. 将课程资料放到 courses/<课程名>/。
+3. 运行 courselm generate <课程名>。
 
-登录状态保存在本目录的 user_data 文件夹中。
-请不要只复制 CourseLM.exe；必须保留整个文件夹结构。
-CourseLM 不附带 Python 或 Chromium，只使用电脑上已安装的 Google Chrome。
+Markdown 与 LaTeX 源码保存在 output/<课程名>/。
+安装 XeLaTeX 并加入 PATH 后，生成时自动导出 PDF。
+只需要 Markdown：courselm generate <课程名> --no-pdf
+离线重新导出 PDF：courselm export-handout <课程名>
+
+失败后重跑同一生成命令即可续跑。
+Obsidian 同步可选，默认关闭，在 config/config.yaml 中配置。
+登录态仍保存在 user_data/。本版不再提供 GUI 或 Portable 构建。

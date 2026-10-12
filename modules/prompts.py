@@ -1,4 +1,4 @@
-"""Version 2 prompt schema for a course-structure-driven handout pipeline."""
+"""Current prompt schema for a course-structure-driven handout pipeline."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from string import Formatter
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from modules.path_manager import app_dir
 
@@ -15,11 +15,11 @@ GENERATION_SCHEMA_VERSION = 3
 MARKDOWN_OUTPUT_RULES = """
 
 输出规范：
-1. 只依据已上传的课程资料；资料未提供的事实写“[待确认]”，根据资料作出的判断写“[推测]”。禁止编造考试时间、题型、分值、频率、老师偏好、真题年份和题目来源。
+1. 课程范围、考情和题目来源只依据已上传资料；资料未明确提及的事实写“[待确认]”。严禁凭空臆测考试时间、老师偏好或虚构真题年份。考情速览中的分值与重要程度依据资料及学科常规权重给出合理估计。允许为教学自编典型入门题，但须标[必要补充]并核对解答。不要输出[推测]、得分盘或冲刺盘等标签。
 2. 输出标准 Markdown。行内公式使用 $...$，独立公式使用 $$...$$；使用标准 LaTeX，下标用 _，不要使用 HTML Entity、HTML 换行标签或反斜杠伪公式。
-3. 面向有高中基础、刚学本课程的学生。术语首次出现必须解释；概念放在首次用到它的例题旁。每个关键解题动作都说明原因，练习要有提示和有步骤的解答。
+3. 面向有高中基础、刚学本课程的学生。术语首次出现必须解释；概念与公式紧密结合例题讲解。每个关键解题动作都说明原因，练习要有提示和有步骤的解答。
 4. 例题来源只能使用 [真题·年份]、[老师题库]、[老师课件]、[作业原题]、[教材例题]、[改编题]、[必要补充]；无法证明来源时不得标真题。
-5. 用短段落和清楚的编号步骤；仅在对比确有帮助时用不超过三列的小表。避免多层列表、表情符号、营销化标题、空泛总结和重复讲解。标题不要手写章内小节编号，以免 PDF 重复编号。
+5. 表格用于考情速览（4列表格：考点 / 题型、重要程度、预计分值、常见题型）或紧凑的对比总结；避免五列以上的宽表格。用短段落和清楚的编号步骤，避免多层嵌套列表与空泛总结。标题不要手写章内小节编号，以免 PDF 重复编号。
 """.strip()
 
 
@@ -42,22 +42,9 @@ class IntroductionPrompt(PromptBase):
     id: str = "introduction"
 
 
-class AppendixPrompt(PromptBase):
-    id: str
-
-
 class GlobalPrompts(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     introduction: IntroductionPrompt
-    appendices: list[AppendixPrompt] = Field(min_length=3, max_length=3)
-
-    @field_validator("appendices")
-    @classmethod
-    def unique_ids(cls, value: list[AppendixPrompt]) -> list[AppendixPrompt]:
-        ids = [item.id for item in value]
-        if ids != ["formula_appendix", "question_index", "final_review"]:
-            raise PromptConfigError("appendices 必须按公式、题型索引、考前提要顺序配置")
-        return value
 
 
 class ChapterPrompt(BaseModel):
@@ -84,11 +71,6 @@ class PromptBook(BaseModel):
     global_prompts: GlobalPrompts = Field(alias="global")
     dynamic: DynamicPrompts
 
-    @property
-    def appendices(self) -> list[AppendixPrompt]:
-        return self.global_prompts.appendices
-
-
 def _placeholders(template: str) -> set[str]:
     return {name for _, name, _, _ in Formatter().parse(template) if name}
 
@@ -107,8 +89,6 @@ def _validate_placeholders(book: PromptBook) -> None:
     _check_prompt(book.planning.course_outline.template, set(), {"chapter_index", "chapter_title", "topics", "outline"}, "course_outline")
     _check_prompt(book.global_prompts.introduction.template, {"course_name", "outline"}, {"chapter_index", "chapter_title", "topics"}, "introduction")
     _check_prompt(book.dynamic.chapter.template, {"chapter_index", "chapter_title", "topics", "outline"}, set(), "chapter")
-    for appendix in book.appendices:
-        _check_prompt(appendix.template, {"outline"}, {"chapter_index", "chapter_title", "topics"}, appendix.id)
 
 
 def load_prompts(path: Path | None = None) -> PromptBook:
@@ -145,6 +125,3 @@ def render_introduction(prompt: IntroductionPrompt, course_name: str, outline: s
 def render_chapter(prompt: ChapterPrompt, chapter_index: int, chapter_title: str, topics: str, outline: str = "") -> str:
     return _render(prompt.template, chapter_index=chapter_index, chapter_title=chapter_title, topics=topics, outline=outline)
 
-
-def render_appendix(prompt: AppendixPrompt, outline: str) -> str:
-    return _render(prompt.template, outline=outline)

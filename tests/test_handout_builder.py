@@ -22,12 +22,16 @@ def test_build_handout_follows_v2_dynamic_order(tmp_path: Path) -> None:
     assert result.missing_inputs == ()
     assert result.template.title_suffix == "期末复习讲义"
     manuscript = result.manuscript_path.read_text(encoding="utf-8")
-    assert manuscript.index("绪论") < manuscript.index("函数") < manuscript.index("极限") < manuscript.index("重要公式汇总")
-    assert manuscript.count("<!-- PAGE_BREAK -->") == 2
+    assert manuscript.index("绪论") < manuscript.index("函数") < manuscript.index("极限") < manuscript.index("典型题型索引")
+    assert manuscript.count("<!-- PAGE_BREAK -->") == 3
+    assert "<!-- PAGE_BREAK -->\n\n# 第2章 极限" in manuscript
     assert manuscript.count("# 第1章 函数") == 1
     assert "# 第1章 函数" in manuscript
     assert not manuscript.startswith("# 数学分析")
     assert "# 绪论" in manuscript
+    assert "# 附录\n" in manuscript
+    assert "重要公式汇总" not in manuscript
+    assert "考前复习提要" not in manuscript
     assert "来源：chapters/" not in manuscript
     assert "可人工审阅的初稿" not in manuscript
 
@@ -64,3 +68,60 @@ def test_build_handout_links_index_to_standard_example(tmp_path: Path) -> None:
 
     assert "<!-- EXAMPLE_ID: example-1 -->\n### 标准例题：求极值" in manuscript
     assert "[第1章 函数 · 题型一：求极值](#example-1)" in manuscript
+
+
+def test_build_handout_excludes_legacy_chapters_after_new_generation(tmp_path: Path) -> None:
+    _write_sources(tmp_path)
+    chapters = tmp_path / "output" / "数学分析" / "md" / "chapters"
+    (chapters / "01-函数.md").write_text(
+        "---\ngeneration_schema_version: 3\n---\n\n# 第1章 函数\n\n新内容",
+        encoding="utf-8",
+    )
+
+    manuscript = build_handout("数学分析", tmp_path / "output", courses_dir=tmp_path / "courses").manuscript_path.read_text(encoding="utf-8")
+
+    assert "新内容" in manuscript
+    assert "# 第2章 极限" not in manuscript
+
+
+def test_build_handout_reports_missing_current_chapters_from_outline(tmp_path: Path) -> None:
+    _write_sources(tmp_path)
+    course = tmp_path / "output" / "数学分析"
+    outline = course / "raw" / "v3" / "outline.json"
+    outline.parent.mkdir(parents=True)
+    outline.write_text('{"course_name":"数学分析","chapters":[{"index":1,"title":"函数"},{"index":2,"title":"极限"}]}', encoding="utf-8")
+    chapter = course / "md" / "chapters" / "01-函数.md"
+    chapter.write_text("---\ngeneration_schema_version: 3\n---\n\n# 第1章 函数\n\n新版内容", encoding="utf-8")
+
+    result = build_handout("数学分析", tmp_path / "output", courses_dir=tmp_path / "courses")
+
+    assert result.missing_inputs == ("第2章",)
+    assert "新版内容" in result.manuscript_path.read_text(encoding="utf-8")
+    assert "# 第2章 极限" not in result.manuscript_path.read_text(encoding="utf-8")
+
+
+def test_build_handout_does_not_use_legacy_chapters_after_new_outline(tmp_path: Path) -> None:
+    _write_sources(tmp_path)
+    course = tmp_path / "output" / "数学分析"
+    outline = course / "raw" / "v3" / "outline.json"
+    outline.parent.mkdir(parents=True)
+    outline.write_text('{"course_name":"数学分析","chapters":[{"index":1,"title":"函数"},{"index":2,"title":"极限"}]}', encoding="utf-8")
+
+    result = build_handout("数学分析", tmp_path / "output", courses_dir=tmp_path / "courses")
+
+    assert "第1章" in result.missing_inputs
+    assert "第2章" in result.missing_inputs
+    assert "# 第1章 函数" not in result.manuscript_path.read_text(encoding="utf-8")
+
+
+def test_build_handout_links_index_to_cram_course_example(tmp_path: Path) -> None:
+    _write_sources(tmp_path)
+    chapter = tmp_path / "output" / "数学分析" / "md" / "chapters" / "01-函数.md"
+    chapter.write_text(
+        "# 第1章 函数\n\n## 考点一：求定义域\n\n### 典型例题：求定义域\n\n题目",
+        encoding="utf-8",
+    )
+    manuscript = build_handout("数学分析", tmp_path / "output", courses_dir=tmp_path / "courses").manuscript_path.read_text(encoding="utf-8")
+    assert "<!-- EXAMPLE_ID: example-1 -->\n### 典型例题：求定义域" in manuscript
+    assert "[第1章 函数 · 考点一：求定义域](#example-1)" in manuscript
+

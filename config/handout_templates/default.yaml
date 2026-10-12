@@ -1,6 +1,6 @@
 version: 2
 title_suffix: 期末复习讲义
-subtitle: 面向基础薄弱学生 · 先听懂，再会做，最后抓住得分点
+subtitle: 蜂考突击课风格 · 考情直击 · 口诀速记 · 典型题型 · 课时过关
 
 latex:
   layout: academic
@@ -23,6 +23,6 @@ sections:
     page_break: true
   - id: appendices
     title: 附录
-    glob: appendix/*.md
-    required: true
+    glob: appendix/02-典型题型索引.md
+    required: false
     page_break: true

@@ -12,13 +12,14 @@ build/
 release/
 .pytest_cache/
 
-# 运行产物
+# 运行产物与参考资料
 logs/
 output/
 courses/
 tmp/
 user_data/
 *.log
+突击课/
 
 # 环境与 IDE
 .env

@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import yaml
 from loguru import logger
@@ -29,7 +28,7 @@ class PathConfig(BaseModel):
 
 
 class ObsidianConfig(BaseModel):
-    """vault_path 允许为空（scan/login 不需要），generate 阶段强制校验。"""
+    """vault_path 为空时只生成本地讲义。"""
 
     vault_path: str = ""
     course_folder: str = "课程"
@@ -61,7 +60,7 @@ class MarkdownConfig(BaseModel):
 
 class AppConfig(BaseModel):
     paths: PathConfig
-    obsidian: ObsidianConfig
+    obsidian: ObsidianConfig = Field(default_factory=ObsidianConfig)
     notebooklm: NotebookLMConfig
     network: NetworkConfig = NetworkConfig()
     prompt_runner: PromptRunnerConfig
@@ -79,7 +78,7 @@ class AppConfig(BaseModel):
         return v
 
     def require_vault(self) -> Path:
-        """generate 等需要写入 Vault 的场景调用：确保 vault_path 已配置。"""
+        """可选同步需要写入 Vault 时调用：确保 vault_path 已配置。"""
         if not self.obsidian.vault_path.strip():
             raise ConfigurationError(
                 "config.yaml 中 obsidian.vault_path 未配置，无法写入 Obsidian Vault"

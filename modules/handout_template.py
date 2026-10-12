@@ -44,7 +44,7 @@ class HandoutSection(BaseModel):
 class HandoutTemplate(BaseModel):
     version: int = 1
     title_suffix: str = Field(min_length=1)
-    subtitle: str = "面向基础薄弱学生的考前三天复习方案"
+    subtitle: str = "面向课程初学者 · 先看例题，跟着做，再独立练"
     sections: list[HandoutSection] = Field(min_length=1)
     latex: dict[str, str] = Field(default_factory=dict)
 

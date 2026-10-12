@@ -27,13 +27,13 @@ def _source(tmp_path: Path) -> None:
         (md / "appendix" / f"{i:02d}-{title}.md").write_text(f"# {title}\n\n$$E=mc^2$$", encoding="utf-8")
 
 
-def test_build_handout_command_writes_latex(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_export_without_compiler_preserves_latex(tmp_path: Path, monkeypatch) -> None:
     _source(tmp_path)
     monkeypatch.setattr(main, "load_config", lambda: _cfg(tmp_path))
 
-    assert main.main(["build-handout", "电磁场"]) == 0
+    monkeypatch.setattr(main.shutil, "which", lambda name: None)
+    assert main.main(["export-handout", "电磁场"]) == 2
     assert (tmp_path / "output" / "电磁场" / "handout" / "main.tex").is_file()
-    assert "讲义初稿" in capsys.readouterr().out
 
 
 def test_export_handout_reports_compiler_failure(tmp_path: Path, monkeypatch) -> None:
@@ -102,3 +102,13 @@ def test_compile_latex_does_not_accept_stale_pdf(tmp_path: Path, monkeypatch) ->
 
     assert main.compile_latex(tex)[0] is False
     assert not pdf.exists()
+
+
+def test_export_incomplete_handout_does_not_compile(tmp_path: Path, monkeypatch) -> None:
+    _source(tmp_path)
+    (tmp_path / "output" / "电磁场" / "md" / "00-绪论.md").unlink()
+    monkeypatch.setattr(main, "load_config", lambda: _cfg(tmp_path))
+    def unexpected_compile(path):
+        raise AssertionError("incomplete handout must not be compiled")
+    monkeypatch.setattr(main, "compile_latex", unexpected_compile)
+    assert main.main(["export-handout", "电磁场"]) == 2

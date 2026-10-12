@@ -19,7 +19,6 @@ def result() -> PipelineResult:
         outline_outcome=PromptOutcome(key="course_outline", title="课程结构分析", success=True, raw_file="outline.json"),
         introduction_outcome=PromptOutcome(key="introduction", title="绪论", success=True, raw_file="introduction.md"),
         chapter_outcomes=[PromptOutcome(key="chapter_01", title="函数", success=True, raw_file="chapters/01-函数.md"), PromptOutcome(key="chapter_02", title="极限", success=True, raw_file="chapters/02-极限.md")],
-        appendix_outcomes=[PromptOutcome(key="formula_appendix", title="附录一 重要公式汇总", success=True, raw_file="appendices/formula_appendix.md"), PromptOutcome(key="question_index", title="附录二 典型题型索引", success=True, raw_file="appendices/question_index.md"), PromptOutcome(key="final_review", title="附录三 考前复习提要", success=True, raw_file="appendices/final_review.md")],
     )
 
 
@@ -33,30 +32,31 @@ def test_render_doc_has_safe_front_matter() -> None:
     out = render_doc("正文 \\(x\\)", "数学分析", "绪论", ["大学课程"])
     meta = yaml.safe_load(out.split("---\n", 2)[1])
     assert meta["course"] == "数学分析" and "$x$" in out
+    assert meta["generation_schema_version"] == 3
 
 
 def test_collect_docs_has_required_v2_order() -> None:
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
     docs = collect_docs(book, result())
-    assert [doc.dest_rel for doc in docs] == ["00-绪论.md", "chapters/01-函数.md", "chapters/02-极限.md", "appendix/01-重要公式汇总.md", "appendix/02-典型题型索引.md", "appendix/03-考前复习提要.md"]
+    assert [doc.dest_rel for doc in docs] == ["00-绪论.md", "chapters/01-函数.md", "chapters/02-极限.md"]
 
 
 def test_generate_all_writes_current_tree(tmp_path: Path) -> None:
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
     raw = tmp_path / "output" / "数学分析" / "raw" / "v3"
-    for rel in ["introduction.md", "chapters/01-函数.md", "chapters/02-极限.md", "appendices/formula_appendix.md", "appendices/question_index.md", "appendices/final_review.md"]:
+    for rel in ["introduction.md", "chapters/01-函数.md", "chapters/02-极限.md"]:
         path = raw / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("内容 \\(x\\)", encoding="utf-8")
     written = generate_all(cfg(tmp_path), book, "数学分析", result())
-    assert len(written) == 6
+    assert len(written) == 3
     assert (tmp_path / "output" / "数学分析" / "md" / "chapters" / "01-函数.md").is_file()
 
 
 def test_generate_all_indexes_real_worked_examples_for_obsidian(tmp_path: Path) -> None:
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
     raw = tmp_path / "output" / "数学分析" / "raw" / "v3"
-    for rel in ["introduction.md", "chapters/02-极限.md", "appendices/question_index.md"]:
+    for rel in ["introduction.md", "chapters/02-极限.md"]:
         path = raw / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("旧索引", encoding="utf-8")
@@ -69,3 +69,15 @@ def test_generate_all_indexes_real_worked_examples_for_obsidian(tmp_path: Path) 
     index = (tmp_path / "output" / "数学分析" / "md" / "appendix" / "02-典型题型索引.md").read_text(encoding="utf-8")
     assert "[[01-函数#标准例题：求极值|第1章 函数 · 题型一：求极值]]" in index
     assert "旧索引" not in index
+
+
+def test_generate_all_does_not_index_legacy_chapters(tmp_path: Path) -> None:
+    book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
+    chapter = tmp_path / "output" / "数学分析" / "md" / "chapters" / "01-函数.md"
+    chapter.parent.mkdir(parents=True)
+    chapter.write_text("# 第1章 函数\n## 题型一：旧题型\n### 标准例题：旧题型", encoding="utf-8")
+    partial = PipelineResult(notebook_id="nb", outline=result().outline)
+
+    generate_all(cfg(tmp_path), book, "数学分析", partial)
+
+    assert not (tmp_path / "output" / "数学分析" / "md" / "appendix" / "02-典型题型索引.md").exists()

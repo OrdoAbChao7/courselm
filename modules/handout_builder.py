@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from modules.handout_template import HandoutTemplate, load_handout_template
-from modules.question_index import ExampleEntry, index_chapter, pdf_question_index
+from modules.question_index import ExampleEntry, index_chapter, is_current_generation, pdf_question_index
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,8 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-def _section(title: str, content: str) -> str:
-    return f"# {title}\n\n{content}\n"
+def _section(title: str, content: str, *, level: int = 1) -> str:
+    return f"{'#' * level} {title}\n\n{content}\n"
 
 
 def _without_leading_h1(content: str) -> str:
@@ -72,6 +73,17 @@ def build_handout(
     missing: list[str] = []
     parts: list[str] = []
     examples: list[ExampleEntry] = []
+    written_chapters = 0
+    outline_path = course_dir / "raw" / "v3" / "outline.json"
+    expected_chapters: set[int] | None = None
+    expected_outline: list[dict] | None = None
+    if outline_path.is_file():
+        outline = json.loads(_read(outline_path))
+        chapters_list = outline.get("chapters", [])
+        if max_chapters is not None:
+            chapters_list = chapters_list[:max_chapters]
+        expected_chapters = {int(chapter["index"]) for chapter in chapters_list}
+        expected_outline = chapters_list
 
     for section in template.sections:
         if section.page_break:
@@ -91,15 +103,46 @@ def build_handout(
             (path for path in source_dir.glob(pattern) if path.is_file()),
             key=lambda path: path.name,
         )
-        if max_chapters is not None and section.id == "chapters":
-            detail_paths = detail_paths[:max_chapters]
+        if section.id == "chapters":
+            if expected_outline is not None:
+                selected_paths: list[Path] = []
+                for ch in expected_outline:
+                    idx = int(ch["index"])
+                    title = str(ch.get("title", "")).strip()
+                    candidates = [
+                        p for p in detail_paths
+                        if (m := re.match(r"^0*(\d+)", p.stem)) and int(m.group(1)) == idx
+                    ]
+                    matched = None
+                    for cand in candidates:
+                        if is_current_generation(_read(cand)):
+                            cleaned_title = re.sub(r'[\\/:*?"<>|\s]+', '_', title).strip('_')
+                            if title and (title in cand.stem or (cleaned_title and cleaned_title in cand.stem)):
+                                matched = cand
+                                break
+                    if matched is None and len(candidates) == 1:
+                        if is_current_generation(_read(candidates[0])):
+                            matched = candidates[0]
+                    if matched is not None:
+                        selected_paths.append(matched)
+                    else:
+                        missing.append(f"第{idx}章")
+                detail_paths = selected_paths
+            else:
+                current = [path for path in detail_paths if is_current_generation(_read(path))]
+                if current:
+                    detail_paths = current
+                if max_chapters is not None:
+                    detail_paths = detail_paths[:max_chapters]
         if not detail_paths:
-            if section.required:
+            if section.required and not (section.id == "chapters" and expected_chapters is not None):
                 missing.append(pattern)
             continue
         if section.id != "chapters":
             parts.extend([f"# {section.title}", ""])
         for path in detail_paths:
+            if section.id == "chapters" and written_chapters:
+                parts.extend(["<!-- PAGE_BREAK -->", ""])
             if not path.resolve().is_relative_to(glob_root.parent.resolve()):
                 raise ValueError(f"讲义源文件路径越界：{path}")
             source_content = _read(path)
@@ -113,9 +156,10 @@ def build_handout(
             if section.id == "chapters":
                 ordinal = re.match(r"^(\d+)", path.stem)
                 display_title = f"第{int(ordinal.group(1)) if ordinal else display_title}章 {display_title}"
+                written_chapters += 1
             if section.id == "appendices" and "题型索引" in path.stem and examples:
                 content = pdf_question_index(examples)
-            parts.append(_section(display_title, content))
+            parts.append(_section(display_title, content, level=2 if section.id == "appendices" else 1))
 
     if missing:
         warning = "、".join(missing)

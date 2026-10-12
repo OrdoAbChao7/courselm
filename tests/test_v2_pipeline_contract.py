@@ -31,13 +31,10 @@ def test_outline_parser_rejects_empty_or_invalid_chapters() -> None:
         parse_course_outline('{"course_name":"数学分析","chapters":[{"index":0,"title":""}]}')
 
 
-def test_v2_prompt_config_has_outline_chapter_and_appendices() -> None:
+def test_prompt_config_has_outline_and_chapter() -> None:
     book = load_prompts(Path(__file__).parents[1] / "config" / "prompts.yaml")
 
     assert book.planning.course_outline.output_file == "outline.json"
     assert book.dynamic.chapter.output_subdir == "chapters"
-    assert [item.id for item in book.global_prompts.appendices] == [
-        "formula_appendix", "question_index", "final_review"
-    ]
     rendered = render_chapter(book.dynamic.chapter, 2, "极限", "数列极限、函数极限")
     assert "第2章" in rendered and "## 题型一" in rendered

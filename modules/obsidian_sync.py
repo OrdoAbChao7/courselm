@@ -21,7 +21,7 @@ class ObsidianSyncError(Exception):
     """Vault 同步失败。"""
 
 
-def sync_course(cfg: AppConfig, course_name: str) -> list[Path]:
+def sync_course(cfg: AppConfig, course_name: str, *, files: list[Path] | None = None) -> list[Path]:
     """把课程成品文档同步到 Obsidian Vault，返回已写文件列表。
 
     Raises:
@@ -43,7 +43,7 @@ def sync_course(cfg: AppConfig, course_name: str) -> list[Path]:
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     written: list[Path] = []
-    for src in sorted(src_dir.rglob("*.md")):
+    for src in sorted(files if files is not None else src_dir.rglob("*.md")):
         dest = dst_dir / src.relative_to(src_dir)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)  # copy2 保留修改时间（Obsidian 排序友好）
