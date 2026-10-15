@@ -81,6 +81,8 @@ def scan_course(
     course_name: str,
     file_types: list[str],
     source_limit_warn: int | None = None,
+    *,
+    allow_empty: bool = False,
 ) -> CourseManifest:
     """扫描 courses_dir/<course_name>/，返回资料清单。
 
@@ -91,7 +93,10 @@ def scan_course(
     courses_dir = Path(courses_dir)
     course_dir = courses_dir / course_name
     if not course_dir.is_dir():
-        raise CourseNotFoundError(f"课程目录不存在：{course_dir}")
+        if allow_empty:
+            course_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            raise CourseNotFoundError(f"课程目录不存在：{course_dir}")
 
     wanted = {ext.lower() for ext in file_types}
     collected: list[CourseFile] = []
@@ -111,6 +116,15 @@ def scan_course(
         )
 
     if not collected:
+        if allow_empty:
+            logger.info("课程目录未包含本地资料文件，将直接复用 NotebookLM 云端已有资料：{}", course_dir)
+            return CourseManifest(
+                course_name=course_name,
+                root=course_dir.resolve(),
+                files=[],
+                source_limit_warn=source_limit_warn,
+                total_size_bytes=0,
+            )
         raise NoCourseFilesError(
             f"课程目录中没有可识别的资料文件（支持类型：{', '.join(sorted(wanted))}）：{course_dir}"
         )

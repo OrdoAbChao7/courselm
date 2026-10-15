@@ -143,3 +143,12 @@ def test_generate_excludes_stale_chapters_from_handout_and_sync(env, service):
     assert "不应纳入本次讲义" not in manuscript
     assert not (vault / "课程" / "电磁场" / "chapters" / "01-旧章名.md").exists()
     assert (chapters / "01-旧章名.md").exists()  # 保留旧文件，避免删除用户内容
+
+
+def test_generate_cloud_only_course_succeeds(env, service):
+    root, _ = env
+    cloud_course = root / "courses" / "物理光学"
+    cloud_course.mkdir(parents=True)
+    assert main.main(["generate", "物理光学", "--no-pdf"]) == 0
+    assert (root / "output" / "物理光学" / "handout" / "manuscript.md").is_file()
+

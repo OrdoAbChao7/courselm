@@ -62,7 +62,7 @@ def test_write_latex_document_supports_academic_layout(tmp_path: Path) -> None:
     assert "\\setcounter{tocdepth}{2}" in text
     assert "\\setcounter{secnumdepth}{0}" in text
     assert "\\usepackage[hidelinks,unicode]{hyperref}" in text
-    assert "\\tableofcontents\n\\Needspace{8\\baselineskip}\n\\section{复习}" in text
+    assert "\\tableofcontents\n\\clearpage\n\\Needspace{8\\baselineskip}\n\\section{复习}" in text
 
 
 def test_render_markdown_converts_table_to_longtable(tmp_path: Path) -> None:
@@ -349,5 +349,17 @@ def test_render_markdown_worked_steps_preserve_single_enumerate_with_math() -> N
     assert rendered.count("\\begin{enumerate}") == 1
     assert rendered.count("\\item ") == 4
     assert "\\subsubsection{避坑提醒}" in rendered
+
+
+def test_render_markdown_heading_texorpdfstring_and_unicode_digits() -> None:
+    source = """## 题型二：$\\delta$ 势阱束缚态与 $\\hat{L}^2$ 计算
+
+要点：① 守恒条件；② 对易关系。
+"""
+    rendered = render_markdown_to_latex(source)
+    assert "\\texorpdfstring{\\subsection{题型二：\\(\\delta\\) 势阱束缚态与 \\(\\hat{L}^2\\) 计算}}" not in rendered
+    assert "\\subsection{\\texorpdfstring{题型二：\\(\\delta\\) 势阱束缚态与 \\(\\hat{L}^2\\) 计算}{题型二：δ 势阱束缚态与 L² 计算}}" in rendered
+    assert "(1) 守恒条件；(2) 对易关系。" in rendered
+
 
 

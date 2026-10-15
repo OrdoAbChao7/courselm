@@ -50,6 +50,16 @@ _UNICODE_SYMBOLS = {
     "┬": "+",
     "┴": "+",
     "┼": "+",
+    "①": "(1)",
+    "②": "(2)",
+    "③": "(3)",
+    "④": "(4)",
+    "⑤": "(5)",
+    "⑥": "(6)",
+    "⑦": "(7)",
+    "⑧": "(8)",
+    "⑨": "(9)",
+    "⑩": "(10)",
 }
 
 
@@ -67,6 +77,7 @@ def _escape_text(text: str) -> str:
         "_": r"\_",
         "{": r"\{",
         "}": r"\}",
+        "$": r"\$",
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
@@ -225,6 +236,46 @@ def _table(lines: list[str]) -> str:
     )
 
 
+def _pdf_bookmark_title(title: str) -> str:
+    clean = re.sub(r"\*\*([^*]+)\*\*", r"\1", title)
+    clean = re.sub(r"\*([^*]+)\*", r"\1", clean)
+    clean = clean.replace("~", "～")
+
+    def _math_to_text(m: re.Match) -> str:
+        s = m.group(1)
+        subs = {
+            r"\delta": "δ",
+            r"\Delta": "Δ",
+            r"\hbar": "ħ",
+            r"\sigma": "σ",
+            r"\pi": "π",
+            r"\mu": "μ",
+            r"\omega": "ω",
+            r"\xi": "ξ",
+            r"\epsilon": "ε",
+            r"\lambda": "λ",
+            r"\psi": "ψ",
+            r"\phi": "φ",
+            r"\to": "->",
+            r"\pm": "±",
+            r"\mp": "∓",
+            r"\infty": "∞",
+            r"^2": "²",
+            r"^3": "³",
+            r"^4": "⁴",
+        }
+        for k, v in subs.items():
+            s = s.replace(k, v)
+        s = re.sub(r"\\(?:hat|mathbf|vec|text|mathrm|bm)\{([^}]+)\}", r"\1", s)
+        s = re.sub(r"\\[a-zA-Z]+", "", s)
+        s = s.replace("{", "").replace("}", "").replace("_", "").replace("^", "")
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    clean = re.sub(r"\$([^$\n]+)\$", _math_to_text, clean)
+    return clean.strip()
+
+
 def render_markdown_to_latex(markdown: str) -> str:
     markdown = markdown.replace(
         r"\$0\$，积分区间缩为一个点 \$\$，故分子变限积分的值也趋于 \$0\$",
@@ -259,6 +310,12 @@ def render_markdown_to_latex(markdown: str) -> str:
     normalized = re.sub(
         r"\\(max|min|sup|inf|lim)([\u3400-\u9fff]+)",
         r"\\\1\\text{\2}",
+        normalized,
+    )
+    # Protect math macros like \mu inside \text{...} from crashing LaTeX text mode
+    normalized = re.sub(
+        r"\\text\{\s*(\\[a-zA-Z]+)\s*([a-zA-Z]*)\}",
+        r"\1\\text{\2}",
         normalized,
     )
     if normalized.count("$$") % 2:
@@ -459,7 +516,11 @@ def render_markdown_to_latex(markdown: str) -> str:
             if pending_anchor:
                 output.append(r"\phantomsection\label{" + pending_anchor + "}")
                 pending_anchor = None
-            output.append(f"\\{command}{{{_inline(title)}}}")
+            if ("$" in title or "~" in title) and not command.endswith("*"):
+                pdf_title = _pdf_bookmark_title(title)
+                output.append(f"\\{command}{{\\texorpdfstring{{{_inline(title)}}}{{{pdf_title}}}}}")
+            else:
+                output.append(f"\\{command}{{{_inline(title)}}}")
         elif stripped:
             output.append(_inline(stripped))
         else:
@@ -539,7 +600,7 @@ def write_latex_document(
         "\\author{}\n\\date{}\n"
         "\\begin{document}\n\\maketitle\n"
         + (f"\\begin{{center}}\\large {_escape_text(subtitle)}\\end{{center}}\n" if subtitle else "")
-        + "\\tableofcontents\n"
+        + "\\tableofcontents\n\\clearpage\n"
         f"{body}"
         "\\end{document}\n"
     )

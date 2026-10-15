@@ -141,8 +141,19 @@ def cmd_generate(args: argparse.Namespace) -> int:
             source_limit_warn=cfg.notebooklm.source_limit_warn,
         )
     except (CourseNotFoundError, NoCourseFilesError) as e:
-        logger.error("{}", e)
-        return EXIT_USAGE
+        course_dir = cfg.paths.courses_dir / args.course
+        if course_dir.is_dir():
+            logger.info("课程目录「{}」未包含本地资料文件，将直接复用 NotebookLM 云端已有资料生成讲义", args.course)
+            manifest = scan_course(
+                cfg.paths.courses_dir,
+                args.course,
+                cfg.file_types,
+                source_limit_warn=cfg.notebooklm.source_limit_warn,
+                allow_empty=True,
+            )
+        else:
+            logger.error("{}", e)
+            return EXIT_USAGE
 
     try:
         book = load_prompts()

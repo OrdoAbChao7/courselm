@@ -48,7 +48,9 @@ def _unescaped_dollar(text: str, start: int, double: bool) -> int | None:
 def _normalize_latex(body: str) -> str:
     body = body.replace(r"\_", "_")
     body = re.sub(r"\\\\\s*$", "", body)
+    body = re.sub(r"\\text\{\s*(\\[a-zA-Z]+)\s*([a-zA-Z]*)\}", r"\1\\text{\2}", body)
     return _STAR_SUBSCRIPT.sub(r"\g<base>_\g<sub>", body)
+
 
 
 def _normalize_math_regions(text: str) -> str:
@@ -114,5 +116,6 @@ def sanitize_markdown(text: str) -> str:
         parts.append(segment)
 
     cleaned = _MULTI_BLANK.sub("\n\n", "".join(parts)).strip()
+    cleaned = re.sub(r"（蜂考突击课版）|（蜂考突击课风格）|【蜂考突击课】|蜂考突击课风格|蜂考突击课|蜂考", "", cleaned)
     _warn_suspicious(cleaned)
     return cleaned

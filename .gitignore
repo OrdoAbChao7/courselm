@@ -20,6 +20,11 @@ tmp/
 user_data/
 *.log
 突击课/
+# 个性化生成讲义（不纳入版本控制）
+docs/*讲义*
+*讲义.md
+*讲义.pdf
+
 
 # 环境与 IDE
 .env
