@@ -14,14 +14,20 @@ dependencies = [
     "pyyaml>=6.0",
     "loguru>=0.7",
     "pydantic>=2.6",
+    "markdown-it-py>=3.0,<5",
+    "mdit-py-plugins>=0.4,<0.7",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+figures = ["Pillow>=10", "numpy>=1.26", "pypdfium2>=4.30,<6", "python-pptx>=1.0", "python-docx>=1.1"]
 
 [project.scripts]
 courselm = "main:main"
 
 [tool.setuptools]
 py-modules = ["main"]
-packages = ["modules"]
+packages = ["modules", "studio"]
+
+[tool.setuptools.package-data]
+studio = ["static/*", "static/vendor/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*"]

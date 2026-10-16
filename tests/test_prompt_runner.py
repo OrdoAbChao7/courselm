@@ -5,7 +5,15 @@ import pytest
 from modules.config import AppConfig
 from modules.file_manager import CourseFile, CourseManifest
 from modules.notebooklm import UploadReport
-from modules.prompt_runner import ChapterFormatError, OutlineParseError, PipelineResult, parse_course_outline, run_pipeline, validate_chapter_markdown
+from modules.prompt_runner import (
+    ChapterFormatError,
+    OutlineParseError,
+    PipelineResult,
+    parse_course_outline,
+    repair_missing_source_labels,
+    run_pipeline,
+    validate_chapter_markdown,
+)
 from modules.prompts import load_prompts
 
 
@@ -212,3 +220,57 @@ def test_chapter_validation_accepts_authentic_cram_course_format() -> None:
 """
     validate_chapter_markdown(cram, 1)
 
+
+def test_chapter_validation_accepts_heading_source_label() -> None:
+    cram = """# 第1章 极限与连续
+## 考情速览
+内容。
+## 题型一：未定式求极限
+### 核心考点与速记口诀
+公式。
+### 标准例题 [教材例题]
+题目。
+### 跟着做
+1. 步骤。
+### 避坑提醒
+提醒。
+### 自己试
+练习。提示：看条件。
+#### 解答
+解答。
+## 课时过关练习
+练习。提示：提示。
+#### 解答
+解答。
+"""
+    validate_chapter_markdown(cram, 1)
+
+
+def test_repair_missing_source_labels() -> None:
+    invalid = """# 第1章 极限与连续
+## 考情速览
+内容。
+## 题型一：未定式求极限
+### 核心考点与速记口诀
+公式。
+### 标准例题
+这是一道没有来源标记的例题。
+### 跟着做
+1. 步骤。
+### 避坑提醒
+提醒。
+### 自己试
+练习。提示：看条件。
+#### 解答
+解答。
+## 课时过关练习
+练习。提示：提示。
+#### 解答
+解答。
+"""
+    with pytest.raises(ChapterFormatError, match="来源标记"):
+        validate_chapter_markdown(invalid, 1)
+
+    repaired = repair_missing_source_labels(invalid)
+    assert "[教材例题]" in repaired
+    validate_chapter_markdown(repaired, 1)

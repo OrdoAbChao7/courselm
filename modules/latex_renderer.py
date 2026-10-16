@@ -24,6 +24,9 @@ _UNICODE_SYMBOLS = {
     "▲": "^",
     "▼": "v",
     "★": "*",
+    "☆": "*",
+    "✓": "[对]",
+    "✗": "[错]",
     "✏": "[笔记]",
     "→": "->",
     "←": "<-",
@@ -322,6 +325,13 @@ def render_markdown_to_latex(markdown: str) -> str:
         last_marker = normalized.rfind("$$")
         normalized = normalized[:last_marker] + normalized[last_marker + 2 :]
     lines = normalized.splitlines()
+    # The same parser that admits figures defines which lines actually contain
+    # images. A literal inside code, comments or math can never become graphics
+    # merely because the legacy line renderer strips indentation or fence marks.
+    from modules.figure_integrity import image_references, _parser
+    parsed_image_lines = {ref.line - 1 for ref in image_references(normalized)}
+    parsed_code_blocks = {token.map[0]: token for token in _parser().parse(normalized)
+                          if token.type in {'fence', 'code_block'} and token.map}
     output: list[str] = []
     i = 0
     in_list: str | None = None
@@ -389,14 +399,10 @@ def render_markdown_to_latex(markdown: str) -> str:
             if end > i and is_frontmatter:
                 i = end + 1
                 continue
-        if stripped.startswith("```"):
-            code_lines: list[str] = []
-            i += 1
-            while i < len(lines) and not lines[i].strip().startswith("```"):
-                code_lines.append(lines[i])
-                i += 1
-            if i < len(lines):
-                i += 1
+        if i in parsed_code_blocks:
+            code_token = parsed_code_blocks[i]
+            code_lines = code_token.content.splitlines()
+            i = code_token.map[1]
             if all(line.isascii() for line in code_lines):
                 output.append("\\begin{verbatim}\n" + "\n".join(code_lines) + "\n\\end{verbatim}")
             else:
@@ -428,6 +434,55 @@ def render_markdown_to_latex(markdown: str) -> str:
                 output.append(_inline(stripped))
                 i += 1
                 continue
+        img_match = re.fullmatch(r"!\[(.*?)\]\((.*?)\)", stripped)
+        if img_match and i in parsed_image_lines:
+            if in_list:
+                output.append(f"\\end{{{in_list}}}")
+                in_list = None
+            caption_raw = img_match.group(1).strip()
+            img_target = img_match.group(2).strip()
+            clean_target = img_target.replace("\\", "/").strip('"\'')
+            parts = [p.strip() for p in caption_raw.split("|") if p.strip()]
+            caption_text = parts[0] if parts else ""
+            width_spec = "0.75\\linewidth"
+            align_spec = "centering"
+            raw_options = []
+            for part in parts[1:]:
+                for opt in re.split(r"[,;]", part):
+                    if opt.strip():
+                        raw_options.append(opt.strip())
+            for opt in raw_options:
+                opt_lower = opt.lower()
+                if opt_lower.startswith("width="):
+                    val = opt[6:].strip()
+                    if val.endswith("%"):
+                        try:
+                            pct = float(val[:-1]) / 100.0
+                            width_spec = f"{pct:.2f}\\linewidth"
+                        except ValueError:
+                            pass
+                    elif any(unit in val for unit in ("linewidth", "textwidth", "cm", "pt", "in", "mm")):
+                        width_spec = val
+                    elif val.isdigit():
+                        width_spec = f"{val}pt"
+                elif opt_lower in {"left", "raggedright"} or opt_lower.startswith("align=left"):
+                    align_spec = "raggedright"
+                elif opt_lower in {"center", "centering"} or opt_lower.startswith("align=center"):
+                    align_spec = "centering"
+                elif opt_lower in {"right", "raggedleft"} or opt_lower.startswith("align=right"):
+                    align_spec = "raggedleft"
+
+            fig_block = [
+                "\\begin{figure}[H]",
+                f"\\{align_spec}",
+                f"\\includegraphics[width={width_spec},height=0.45\\textheight,keepaspectratio]{{{clean_target}}}",
+            ]
+            if caption_text:
+                fig_block.append(f"\\caption{{{_inline(caption_text)}}}")
+            fig_block.append("\\end{figure}")
+            output.append("\n".join(fig_block))
+            i += 1
+            continue
         if (
             stripped.startswith("|")
             and i + 1 < len(lines)
@@ -566,8 +621,10 @@ def write_latex_document(
     document = (
         "\\documentclass[UTF8,a4paper,12pt]{ctexart}\n"
         "\\usepackage{amsmath,amssymb,booktabs,geometry}\n"
-        "\\usepackage{esint}\n"
+        "\\usepackage{esint,extarrows}\n"
         "\\usepackage{xcolor,longtable,array}\n"
+        "\\usepackage{graphicx,float}\n"
+        "\\usepackage[font=small,labelfont=bf,labelsep=space]{caption}\n"
         "\\usepackage{fancyhdr}\n"
         "\\usepackage[most]{tcolorbox}\n"
         "\\usepackage{needspace}\n"

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+import shutil
 from modules.handout_template import HandoutTemplate, load_handout_template
 from modules.question_index import ExampleEntry, index_chapter, is_current_generation, pdf_question_index
 
@@ -17,6 +19,16 @@ class HandoutBuildResult:
     tex_path: Path
     missing_inputs: tuple[str, ...]
     template: HandoutTemplate
+
+
+def _sync_handout_figures(course_dir: Path, handout_dir: Path, manuscript: str) -> list[str]:
+    """Legacy checker: never copy an unbound library or resolve by basename."""
+    from modules.figure_integrity import image_references, local_file
+    missing_images: list[str] = []
+    for ref in image_references(manuscript):
+        if not local_file(handout_dir, ref.path).is_file():
+            missing_images.append(f"插图不存在: {ref.path}")
+    return missing_images
 
 
 def _safe_course_dir(output_dir: Path, course: str) -> Path:
@@ -40,6 +52,12 @@ def _without_leading_h1(content: str) -> str:
     return re.sub(r"^\s*#\s+[^\n]+\n*", "", content, count=1).strip()
 
 
+def _source_title(content: str, fallback: str) -> str:
+    content = re.sub(r"^\s*---\s*\n.*?\n---\s*\n*", "", content, count=1, flags=re.DOTALL)
+    match = re.match(r"^\s*#\s+([^\n]+)", content)
+    return match.group(1).strip() if match else fallback
+
+
 def _safe_source(source_dir: Path, relative: str) -> Path:
     path = (source_dir / relative).resolve()
     if not path.is_relative_to(source_dir.resolve()):
@@ -54,6 +72,11 @@ def build_handout(
     courses_dir: Path | None = None,
     template_path: Path | None = None,
     max_chapters: int | None = None,
+    prefer_source_titles: bool = False,
+    rebuild_question_index: bool = True,
+    figure_task_id: str | None = None,
+    figure_course: str | None = None,
+    figure_source_dir: Path | None = None,
 ) -> HandoutBuildResult:
     """Build a deterministic manuscript from the current Obsidian export."""
 
@@ -69,6 +92,42 @@ def build_handout(
     chapters_dir = handout_dir / "chapters"
     handout_dir.mkdir(parents=True, exist_ok=True)
     chapters_dir.mkdir(parents=True, exist_ok=True)
+
+    from modules.figure_integrity import prepare_markdown, copy_bound_figures
+    from modules.figure_models import FigureManifest
+    figure_manifest = FigureManifest.load(
+        course_dir / 'figures' / 'manifest.json', figure_task_id or f'course_{course}',
+        course if figure_course is None else figure_course)
+    figure_sources = figure_source_dir if figure_source_dir is not None else courses_dir / course
+    figure_omissions: list[dict] = []
+    missing_figure_requests: list[dict] = []
+    bound_assets: dict[str, str] = {}
+    inserted_figures = 0
+    approved_references: Counter = Counter()
+
+    def prepare(content: str, path: Path) -> str:
+        nonlocal inserted_figures
+        result = prepare_markdown(content, path.relative_to(source_dir).as_posix(), figure_manifest,
+                                  figure_root=course_dir, source_root=figure_sources)
+        figure_omissions.extend(result.omissions)
+        bound_assets.update(result.assets)
+        inserted_figures += result.inserted
+        from modules.figure_integrity import image_references
+        approved_references.update(ref.path for ref in image_references(result.markdown))
+        from modules.figure_matcher import FigureMatcher
+        warnings, _ = FigureMatcher(figure_manifest).audit_markdown_content(
+            result.markdown, path.relative_to(source_dir).as_posix())
+        missing_figure_requests.extend(w.model_dump() for w in warnings)
+        if warnings:
+            from modules.figure_integrity import questions, OMITTED
+            patches = []
+            for question in questions(result.markdown):
+                if (any(question.start_line <= w.line_number <= question.end_line for w in warnings)
+                        and OMITTED not in result.markdown[question.start:question.end]):
+                    patches.append(question.end)
+            for position in reversed(patches):
+                result.markdown = result.markdown[:position].rstrip() + '\n\n' + OMITTED + '\n\n' + result.markdown[position:]
+        return result.markdown
 
     missing: list[str] = []
     parts: list[str] = []
@@ -94,7 +153,9 @@ def build_handout(
                 if section.required:
                     missing.append(section.source)
                 continue
-            parts.append(_section(section.title, _without_leading_h1(_read(path))))
+            source = prepare(_read(path), path)
+            title = _source_title(source, section.title) if prefer_source_titles else section.title
+            parts.append(_section(title, _without_leading_h1(source)))
             continue
 
         pattern = section.glob or ""
@@ -145,7 +206,7 @@ def build_handout(
                 parts.extend(["<!-- PAGE_BREAK -->", ""])
             if not path.resolve().is_relative_to(glob_root.parent.resolve()):
                 raise ValueError(f"讲义源文件路径越界：{path}")
-            source_content = _read(path)
+            source_content = prepare(_read(path), path)
             if section.id == "chapters":
                 source_content, found = index_chapter(source_content, path.name, len(examples) + 1, annotate=True)
                 examples.extend(found)
@@ -157,15 +218,39 @@ def build_handout(
                 ordinal = re.match(r"^(\d+)", path.stem)
                 display_title = f"第{int(ordinal.group(1)) if ordinal else display_title}章 {display_title}"
                 written_chapters += 1
-            if section.id == "appendices" and "题型索引" in path.stem and examples:
+            if prefer_source_titles:
+                display_title = _source_title(source_content, display_title)
+            if rebuild_question_index and section.id == "appendices" and "题型索引" in path.stem and examples:
                 content = pdf_question_index(examples)
             parts.append(_section(display_title, content, level=2 if section.id == "appendices" else 1))
 
+    manuscript_content = "\n".join(parts).rstrip() + "\n"
+    # Reference definitions from another chapter can activate previously literal
+    # image syntax only after assembly. Reparse and remove those unknown images.
+    from modules.figure_integrity import image_references, OMITTED
+    for ref in reversed(image_references(manuscript_content)):
+        if ref.path not in bound_assets:
+            manuscript_content = manuscript_content[:ref.start] + OMITTED + manuscript_content[ref.end:]
+            figure_omissions.append({'document': 'manuscript.md', 'path': ref.path,
+                                     'line': ref.line, 'reason': 'UNBOUND_ASSEMBLED_REFERENCE'})
+    if Counter(ref.path for ref in image_references(manuscript_content)) != approved_references:
+        raise ValueError('组装后的题图引用与已批准绑定不一致，已阻止构建')
+    copy_bound_figures(course_dir, handout_dir, bound_assets)
+    (handout_dir / 'figure-report.json').write_text(json.dumps({
+        'policy': 'explicit-question-binding-v1', 'task_id': figure_manifest.task_id,
+        'inserted': inserted_figures, 'omitted': len(figure_omissions),
+        'omissions': figure_omissions, 'assets': bound_assets,
+        'required_missing': len(missing_figure_requests), 'missing_requests': missing_figure_requests,
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    missing_figs = _sync_handout_figures(course_dir, handout_dir, manuscript_content)
+    if missing_figs:
+        missing.extend(missing_figs)
+
     if missing:
         warning = "、".join(missing)
-        parts.insert(0, f"> 缺失输入：{warning}。本稿为部分生成结果，请补齐资料后重新构建。")
+        manuscript_content = f"> 缺失输入：{warning}。本稿为部分生成结果，请补齐资料后重新构建。\n\n" + manuscript_content
 
     manuscript_path = handout_dir / "manuscript.md"
-    manuscript_path.write_text("\n".join(parts).rstrip() + "\n", encoding="utf-8")
+    manuscript_path.write_text(manuscript_content, encoding="utf-8")
     tex_path = handout_dir / "main.tex"
     return HandoutBuildResult(manuscript_path, tex_path, tuple(missing), template)

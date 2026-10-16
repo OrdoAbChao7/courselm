@@ -32,6 +32,48 @@ class ChapterFormatError(PromptRunnerError):
     """章节缺少由例题到练习的可读教学顺序。"""
 
 
+SOURCE_LABEL_PATTERN = re.compile(
+    r"[\[【(（](?:来源[：:])?(?:(?:往年|历年|期末|考研)?真题(?:[·.\s/_-][^\]】)）]+)?|老师题库|老师课件|作业原题|作业题|教材例题|教材习题|课后习题|改编题|必要补充)[\]】)）]"
+)
+
+
+def repair_missing_source_labels(text: str) -> str:
+    """自动为缺少来源标记的标准例题补充 [教材例题]，避免模型因细微标签遗漏丢弃整章。"""
+    types = list(re.finditer(r"(?m)^##\s+(?:题型|考点)(?:[一二三四五六七八九十]+|\d+)\s*[：:].+$", text))
+    end = re.search(r"(?m)^##\s+(?:课时过关练习|章末过关|课时练习)\s*$", text)
+    if not types or not end:
+        return text
+
+    new_text = text
+    for number in range(len(types) - 1, -1, -1):
+        cur_types = list(re.finditer(r"(?m)^##\s+(?:题型|考点)(?:[一二三四五六七八九十]+|\d+)\s*[：:].+$", new_text))
+        cur_end = re.search(r"(?m)^##\s+(?:课时过关练习|章末过关|课时练习)\s*$", new_text)
+        if not cur_types or not cur_end or number >= len(cur_types):
+            break
+        block_end = cur_types[number + 1].start() if number + 1 < len(cur_types) else cur_end.start()
+        match = cur_types[number]
+        block = new_text[match.end():block_end]
+        headings = list(re.finditer(r"(?m)^###\s+(.+?)\s*$", block))
+        found = next((item for item in headings if any(item.group(1).startswith(opt) for opt in ("标准例题", "典型例题"))), None)
+        if found is None:
+            continue
+        following = next((item.start() for item in headings if item.start() > found.start()), len(block))
+        example_content = block[found.start():following]
+        if not SOURCE_LABEL_PATTERN.search(example_content):
+            post_heading = block[found.end():following]
+            lines = post_heading.splitlines(keepends=True)
+            for idx, line in enumerate(lines):
+                if line.strip():
+                    stripped = line.rstrip("\r\n")
+                    eol = line[len(stripped):]
+                    lines[idx] = f"{stripped} [教材例题]{eol}"
+                    repaired_post = "".join(lines)
+                    new_block = block[:found.end()] + repaired_post + block[following:]
+                    new_text = new_text[:match.end()] + new_block + new_text[block_end:]
+                    break
+    return new_text
+
+
 def validate_chapter_markdown(text: str, chapter_index: int) -> None:
     """Reject a chapter that omits the agreed cram-course worked-example learning loop."""
     if not re.search(rf"(?m)^#\s+第{chapter_index}章\s+.+$", text):
@@ -67,9 +109,8 @@ def validate_chapter_markdown(text: str, chapter_index: int) -> None:
             following = next((item.start() for item in headings if item.start() > found.start()), len(block))
             if not block[found.end():following].strip():
                 raise ChapterFormatError(f"题型{number + 1}的{stage_options[0]}没有内容")
-            if any(opt in stage_options for opt in ("标准例题", "典型例题")) and not re.search(
-                r"\[(?:真题[·.][^\]]+|老师题库|老师课件|作业原题|教材例题|改编题|必要补充)\]",
-                block[found.end():following],
+            if any(opt in stage_options for opt in ("标准例题", "典型例题")) and not SOURCE_LABEL_PATTERN.search(
+                block[found.start():following],
             ):
                 raise ChapterFormatError(f"题型{number + 1}的标准例题缺少来源标记")
         if positions != sorted(positions):
@@ -214,6 +255,7 @@ async def run_pipeline(
     svc: NotebookLMService,
     *,
     fresh: bool = False,
+    on_progress=None,
 ) -> PipelineResult:
     """生成大纲、绪论与全部章节，自动跳过有效缓存。"""
     from modules.prompts import render_chapter, render_introduction, render_outline
@@ -230,12 +272,15 @@ async def run_pipeline(
             if path.is_file():
                 path.unlink()
 
+    report_progress = on_progress or (lambda stage, detail: None)
+    report_progress('NotebookLM 连接', '连接当前任务独立 Notebook')
     notebook_id = await svc.get_or_create_notebook(course_name)
     state.notebook_id = notebook_id
     rel_files = [f.path.relative_to(manifest.root).as_posix() for f in manifest.files]
     uploaded = set() if fresh else set(state.uploaded_files)
     pending = [f for f, rel in zip(manifest.files, rel_files) if rel not in uploaded]
     if pending:
+        report_progress('NotebookLM 资料上传', f'上传 {len(pending)} 份资料并等待索引')
         partial = manifest.model_copy(update={"files": pending, "total_size_bytes": sum(f.size_bytes for f in pending)})
         report: UploadReport = await svc.upload_sources(notebook_id, partial)
         uploaded.update(rel for rel, f in zip(rel_files, manifest.files) if f in pending and f.path.name in set(report.uploaded))
@@ -244,6 +289,7 @@ async def run_pipeline(
     else:
         _save_state(state_path, state)
 
+    report_progress('课程大纲生成', '读取有效缓存或请求课程大纲')
     result = PipelineResult(notebook_id=notebook_id)
     outline_path = raw_dir / "outline.json"
     outline: CourseOutline | None = None
@@ -265,6 +311,7 @@ async def run_pipeline(
     result.outline = outline
 
     outline_text = json.dumps(outline.model_dump(), ensure_ascii=False, indent=2)
+    report_progress('绪论生成', '读取有效缓存或生成绪论')
     intro_path = raw_dir / "introduction.md"
     if intro_path.is_file() and not fresh:
         result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=True, from_cache=True, raw_file="introduction.md")
@@ -276,6 +323,7 @@ async def run_pipeline(
         except Exception as exc:
             result.introduction_outcome = PromptOutcome(key="introduction", title=book.global_prompts.introduction.title, success=False, error=str(exc))
     for item in outline.chapters:
+        report_progress('逐章节生成', f'第 {item.index} 章：{item.title}；已完成 {sum(o.success for o in result.chapter_outcomes)}/{len(outline.chapters)} 章')
         path = chapters_dir / f"{item.index:02d}-{_slug(item.title)}.md"
         key = f"chapter_{item.index:02d}"
         if path.is_file() and not fresh:
@@ -293,12 +341,22 @@ async def run_pipeline(
                     validate_chapter_markdown(answer, item.index)
                     break
                 except ChapterFormatError as exc:
+                    if "缺少来源标记" in str(exc):
+                        repaired = repair_missing_source_labels(answer)
+                        try:
+                            validate_chapter_markdown(repaired, item.index)
+                            answer = repaired
+                            logger.info("第{}章自动补全例题来源标记成功，通过校验", item.index)
+                            break
+                        except ChapterFormatError:
+                            pass
                     if attempt:
                         raise
-                    question += f"\n\n上次输出不符合讲义结构：{exc}。请重新完整生成本章，逐题型遵守标准例题→跟着做→从题归纳→自己试的顺序。"
+                    question += f"\n\n上次输出不符合讲义结构：{exc}。请重新完整生成本章，逐题型遵守标准例题→跟着做→从题归纳→自己试的顺序。注意每道标准例题必须附带[教材例题]、[真题·年份]等来源标记。"
             path.write_text(answer, encoding="utf-8")
             result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=True, raw_file=f"chapters/{path.name}"))
         except Exception as exc:
+            logger.error("生成第{}章《{}》失败：{}", item.index, item.title, exc)
             result.chapter_outcomes.append(PromptOutcome(key=key, title=item.title, success=False, error=str(exc)))
 
     return result

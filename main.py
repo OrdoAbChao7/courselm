@@ -54,22 +54,27 @@ def compile_latex(tex_path: Path) -> tuple[bool, str]:
     pdf_path.unlink(missing_ok=True)
     outputs: list[str] = []
     for _ in range(2):
-        completed = subprocess.run(
-            [executable, "-interaction=nonstopmode", tex_path.name],
-            cwd=tex_path.parent,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [executable, "-no-shell-escape", "-file-line-error", "-halt-on-error", "-interaction=nonstopmode", tex_path.name],
+                cwd=tex_path.parent,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+                timeout=180,
+                env={**os.environ, 'openin_any': 'p', 'openout_any': 'p'},
+            )
+        except subprocess.TimeoutExpired:
+            return False, 'XeLaTeX 编译超时（180 秒）；Markdown 草稿已保留，请检查公式或宏包环境'
         outputs.append((completed.stdout or "") + (completed.stderr or ""))
         if completed.returncode != 0:
             # MiKTeX may return 1 for update-check/overfull-box diagnostics
             # even after writing a usable PDF. Accept only when the PDF
             # exists and the transcript contains no fatal TeX marker.
             diagnostic = outputs[-1]
-            fatal = re.search(r"(?m)^!|Emergency stop|Fatal error", diagnostic)
+            fatal = re.search(r"(?m)^!|Emergency stop|Fatal error|Undefined control sequence|LaTeX Error|:[0-9]+:", diagnostic)
             if not pdf_path_if_exists(tex_path) or fatal:
                 return False, diagnostic[-4000:]
     if not pdf_path.is_file():

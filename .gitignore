@@ -1,5 +1,6 @@
 # 参考仓库（不纳入本项目版本控制）
 notebooklm-py/
+_references/
 
 # Python
 __pycache__/
@@ -18,6 +19,13 @@ output/
 courses/
 tmp/
 user_data/
+studio_data/
+.playwright-cli/
+# 本地 Notebook 运维脚本（包含个人 Notebook ID）
+scripts/check_nbs.py
+scripts/check_sources_algebra.py
+scripts/check_sources_electrodynamics.py
+scripts/rename_algebra.py
 *.log
 突击课/
 # 个性化生成讲义（不纳入版本控制）

@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="color-scheme" content="light">
+  <title>CourseLM Studio — 讲义生产与编辑</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css">
+</head>
+<body>
+<div class="shell">
+  <!-- Left Navigation Rail -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+          <path d="M6 6h10"></path>
+          <path d="M6 10h10"></path>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">CourseLM</span>
+        <span class="brand-badge">STUDIO</span>
+      </div>
+    </div>
+
+    <div class="rail-nav">
+      <div class="rail-group-title">工作空间</div>
+      <a class="nav active" href="#workspace">
+        <svg class="navico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="7" height="7" x="3" y="3" rx="1"></rect>
+          <rect width="7" height="7" x="14" y="3" rx="1"></rect>
+          <rect width="7" height="7" x="14" y="14" rx="1"></rect>
+          <rect width="7" height="7" x="3" y="14" rx="1"></rect>
+        </svg>
+        <span>制作工作台</span>
+      </a>
+      <a class="nav" href="#history">
+        <svg class="navico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span>生成记录</span>
+      </a>
+      <a class="nav" href="#progress">
+        <svg class="navico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v4"></path>
+          <path d="M12 18v4"></path>
+          <path d="m4.93 4.93 2.83 2.83"></path>
+          <path d="m16.24 16.24 2.83 2.83"></path>
+          <path d="M2 12h4"></path>
+          <path d="M18 12h4"></path>
+          <path d="m4.93 19.07 2.83-2.83"></path>
+          <path d="m16.24 7.76 2.83-2.83"></path>
+        </svg>
+        <span>实时进度</span>
+      </a>
+      <a class="nav" id="rail-figures" href="#figures" onclick="if(current){showFiguresPanel();}else{notify('请先选择或创建一个讲义任务');}">
+        <svg class="navico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect>
+          <circle cx="9" cy="9" r="2"></circle>
+          <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+        </svg>
+        <span>原图素材库</span>
+      </a>
+
+      <div class="rail-group-title" style="margin-top:28px;">工作流程</div>
+      <div class="rail-guide">
+        <span class="guide-dot active"></span>
+        <span class="guide-text">1. 选择资料并预览</span>
+      </div>
+      <div class="rail-guide">
+        <span class="guide-dot"></span>
+        <span class="guide-text">2. 设定模式与排版风格</span>
+      </div>
+      <div class="rail-guide">
+        <span class="guide-dot"></span>
+        <span class="guide-text">3. 自动生成与人工审阅</span>
+      </div>
+    </div>
+
+    <div class="rail-bottom">
+      <div class="local-dot"></div>
+      <div class="local-text">
+        <strong>本地环境已连接</strong>
+        <small>文件与生成产物保留在本机</small>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Surface -->
+  <main id="workspace">
+    <header class="topbar">
+      <div class="breadcrumb">
+        <span>个人工作区</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        <span class="active">讲义生成工作台</span>
+      </div>
+      <div class="topright">
+        <span class="live-pill">
+          <span class="pill-dot"></span>
+          LOCALHOST:8765
+        </span>
+        <div class="avatar" title="CourseLM Local Studio">CL</div>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- Surface Title Banner -->
+      <div class="hero">
+        <div class="hero-main">
+          <h1>创建期末复习讲义</h1>
+          <p>基于课程课件、教材与真题资料，一站式配置、生成和审阅规范的出版级讲义。</p>
+        </div>
+      </div>
+
+      <!-- Engine Notice -->
+      <div class="notice">
+        <div class="notice-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 16v-4"></path>
+            <path d="M12 8h.01"></path>
+          </svg>
+        </div>
+        <p><b>CourseLM 引擎已就绪。</b> 讲义内容由 NotebookLM 模型生成（需先完成 Google 登录授权）。进度基于真实产物文件追踪，生成后请严格人工复核公式、例题与版权。</p>
+      </div>
+
+      <!-- Two-Column Workbench Layout -->
+      <div class="layout">
+        <!-- Configuration Main Column -->
+        <section class="maincol">
+          <!-- Step 1: Input Materials -->
+          <div class="section-box" id="files">
+            <div class="section-head">
+              <div class="step-badge">1</div>
+              <div>
+                <h2>课程与课件资料</h2>
+                <div class="hint">确定资料来源目录和讲义所属的大学课程名称</div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="course">课程名称 <em>*</em></label>
+              <input id="course" placeholder="例如：大学物理 B、线性代数、模拟电子技术基础" maxlength="65" autocomplete="off" value="大学物理 B">
+            </div>
+
+            <div class="field">
+              <label for="source">本机资料文件夹路径 <em>*</em></label>
+              <div class="file-input-group">
+                <input id="source" placeholder="D:\课程资料\大学物理 或 /Users/me/Documents/course" spellcheck="false">
+                <button class="outline-btn" id="browse" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+                  </svg>
+                  浏览文件夹
+                </button>
+              </div>
+              <div class="assist">支持 PDF、PPT、PPTX、DOCX 及图片 · 自动扫描子目录 · 单次支持最多 200 个文件 / 400 MB</div>
+            </div>
+
+            <div class="source-actions">
+              <button type="button" class="action-btn" id="scan">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.3-4.3"></path>
+                </svg>
+                扫描并预览资料清单
+              </button>
+              <span id="source-summary">尚未选择文件夹</span>
+            </div>
+
+            <div class="file-list hidden" id="file-list">
+              <div class="files-title">
+                <span>资料清单</span>
+                <span id="file-count">0 份</span>
+              </div>
+              <div id="file-rows" class="file-rows"></div>
+            </div>
+          </div>
+
+          <!-- Step 2: Content Mode -->
+          <div class="section-box" id="modes">
+            <div class="section-head">
+              <div class="step-badge">2</div>
+              <div>
+                <h2>讲义内容模式</h2>
+                <div class="hint">决定知识讲解深度、推导详略程度与应试侧重点</div>
+              </div>
+            </div>
+
+            <div class="mode-grid" role="radiogroup" aria-label="讲义模式">
+              <button class="mode-card selected" type="button" data-mode="sprint" aria-pressed="true">
+                <div class="mode-icon purple">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                  </svg>
+                </div>
+                <div class="mode-info">
+                  <b>考前冲刺</b>
+                  <small>考点浓缩 · 解题速览</small>
+                </div>
+                <span class="mode-radio"></span>
+              </button>
+
+              <button class="mode-card" type="button" data-mode="comprehensive" aria-pressed="false">
+                <div class="mode-icon blue">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path>
+                    <path d="M6 6h10"></path>
+                    <path d="M6 10h10"></path>
+                  </svg>
+                </div>
+                <div class="mode-info">
+                  <b>完整精讲</b>
+                  <small>原理推导 · 体系梳理</small>
+                </div>
+                <span class="mode-radio"></span>
+              </button>
+
+              <button class="mode-card" type="button" data-mode="practice" aria-pressed="false">
+                <div class="mode-icon orange">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="6"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                  </svg>
+                </div>
+                <div class="mode-info">
+                  <b>题型突破</b>
+                  <small>方法拆解 · 典型变式</small>
+                </div>
+                <span class="mode-radio"></span>
+              </button>
+            </div>
+
+            <div class="selection-note" id="mode-note">
+              优先生成核心考点、典型题型、速记提要与高价值易错提醒。
+            </div>
+          </div>
+
+          <!-- Step 3: Typography & Style -->
+          <div class="section-box" id="design">
+            <div class="section-head">
+              <div class="step-badge">3</div>
+              <div>
+                <h2>讲义排版风格</h2>
+                <div class="hint">选择视觉主题，定制讲义封面标题与主题强调色</div>
+              </div>
+            </div>
+
+            <div class="style-grid" role="radiogroup" aria-label="讲义风格">
+              <button class="style-card selected" type="button" data-style="academic" aria-pressed="true">
+                <div class="paper-preview academic">
+                  <div class="paper-header"></div>
+                  <div class="paper-body">
+                    <div class="paper-line full"></div>
+                    <div class="paper-line medium"></div>
+                    <div class="paper-box"></div>
+                    <div class="paper-line short"></div>
+                  </div>
+                </div>
+                <b>学术经典</b>
+                <small>严谨规整 · 双面打印友好</small>
+              </button>
+
+              <button class="style-card" type="button" data-style="modern" aria-pressed="false">
+                <div class="paper-preview modern">
+                  <div class="paper-header"></div>
+                  <div class="paper-body">
+                    <div class="paper-line full"></div>
+                    <div class="paper-line medium"></div>
+                    <div class="paper-box"></div>
+                    <div class="paper-line short"></div>
+                  </div>
+                </div>
+                <b>现代蓝调</b>
+                <small>现代清新 · 层级结构分明</small>
+              </button>
+
+              <button class="style-card" type="button" data-style="warm" aria-pressed="false">
+                <div class="paper-preview warm">
+                  <div class="paper-header"></div>
+                  <div class="paper-body">
+                    <div class="paper-line full"></div>
+                    <div class="paper-line medium"></div>
+                    <div class="paper-box"></div>
+                    <div class="paper-line short"></div>
+                  </div>
+                </div>
+                <b>暖色书卷</b>
+                <small>温和护眼 · 长时间阅读适宜</small>
+              </button>
+
+              <button class="style-card" type="button" data-style="minimal" aria-pressed="false">
+                <div class="paper-preview minimal">
+                  <div class="paper-header"></div>
+                  <div class="paper-body">
+                    <div class="paper-line full"></div>
+                    <div class="paper-line medium"></div>
+                    <div class="paper-box"></div>
+                    <div class="paper-line short"></div>
+                  </div>
+                </div>
+                <b>黑白极简</b>
+                <small>纯粹极简 · 墨水屏与省墨</small>
+              </button>
+            </div>
+
+            <div class="inline-fields">
+              <div class="field">
+                <label for="title">讲义标题后缀</label>
+                <input id="title" placeholder="例如：期末复习讲义、核心提分手册">
+              </div>
+              <div class="field">
+                <label for="accent">主题强调色</label>
+                <div class="color-field">
+                  <input type="color" id="accent" value="#1F4E79">
+                  <span id="accent-label">#1F4E79</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="field field-last">
+              <label for="subtitle">封面副标题</label>
+              <input id="subtitle" placeholder="例如：从知识理解到规范解题">
+            </div>
+          </div>
+        </section>
+
+        <!-- Summary & Launch Sidebar -->
+        <aside class="sidecol">
+          <section class="summary-panel">
+            <h3>本次制作计划</h3>
+
+            <!-- Realistically Styled Academic Cover Preview -->
+            <div class="summary-cover">
+              <div class="cover-pattern"></div>
+              <div class="cover-inner">
+                <div class="cover-org">COURSELM ACADEMIC</div>
+                <div class="cover-divider"></div>
+                <div id="cover-course" class="cover-title">大学物理 B</div>
+                <div class="cover-foot">课程资料 · 专属复习讲义 · A4 PDF</div>
+              </div>
+            </div>
+
+            <div class="summary-list">
+              <div class="summary-item">
+                <span>内容模式</span>
+                <b id="s-mode">考前冲刺</b>
+              </div>
+              <div class="summary-item">
+                <span>排版主题</span>
+                <b id="s-style">学术经典</b>
+              </div>
+              <div class="summary-item">
+                <span>资料数量</span>
+                <b id="s-files">尚未扫描</b>
+              </div>
+              <div class="summary-item">
+                <span>PDF 引擎</span>
+                <b>XeLaTeX</b>
+              </div>
+            </div>
+
+            <button id="start" class="primary-btn" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>开始制作讲义</span>
+            </button>
+            <div class="below-cta">仅在当前电脑运行 · 产物完全保留在本地</div>
+          </section>
+
+          <section class="side-note">
+            <div class="note-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5"></path>
+              </svg>
+            </div>
+            <div>
+              <b>任务独立隔离</b>
+              <p>每次制作均生成独立编号目录，Notebook 与产物严格互不影响。</p>
+            </div>
+          </section>
+
+          <section class="side-note">
+            <div class="note-icon warn">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <div>
+              <b>严格人工复核</b>
+              <p>生成完成代表初稿就绪。数学公式、典型例题与步骤仍须人工审核。</p>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <!-- Real-time Progress & Management Section -->
+      <div class="lower" id="progress">
+        <!-- Progress Panel -->
+        <div class="progress-panel">
+          <div class="section-head">
+            <div>
+              <h2>实时生成进度</h2>
+              <div class="hint">按大纲、各章生成、LaTeX 组装与 PDF 编译真实节点更新</div>
+            </div>
+            <span class="tag status-tag" id="job-status">暂无任务</span>
+          </div>
+
+          <div class="progress-overview">
+            <div class="progress-meta">
+              <h3 id="progress-title">尚未启动生成</h3>
+              <div id="progress-detail" class="hint">配置上方选项后点击“开始制作讲义”</div>
+            </div>
+            <div class="percent" id="percent">0%</div>
+          </div>
+
+          <div class="track">
+            <div id="track-fill"></div>
+          </div>
+
+          <!-- Connected Milestones Stepper -->
+          <div class="milestones-stepper" id="milestones">
+            <div class="milestone-item">
+              <div class="milestone-dot">1</div>
+              <span>资料扫描</span>
+            </div>
+            <div class="milestone-line"></div>
+            <div class="milestone-item">
+              <div class="milestone-dot">2</div>
+              <span>NotebookLM</span>
+            </div>
+            <div class="milestone-line"></div>
+            <div class="milestone-item">
+              <div class="milestone-dot">3</div>
+              <span>章节生成</span>
+            </div>
+            <div class="milestone-line"></div>
+            <div class="milestone-item">
+              <div class="milestone-dot">4</div>
+              <span>组装排版</span>
+            </div>
+            <div class="milestone-line"></div>
+            <div class="milestone-item">
+              <div class="milestone-dot">5</div>
+              <span>人工审阅</span>
+            </div>
+          </div>
+
+          <!-- Activity Event Stream -->
+          <div class="activity-head">
+            <b>执行日志流</b>
+            <button id="cancel" type="button" class="subtle-btn danger hidden">停止当前任务</button>
+          </div>
+          <div class="activity-log" id="events">
+            <div class="empty-state">新任务创建后将在此实时输出阶段事件</div>
+          </div>
+
+          <!-- Work Actions Bar -->
+          <div class="work-actions">
+            <button id="open-editor" class="outline-btn" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              打开章节编辑器
+            </button>
+            <button id="open-figures-btn" class="outline-btn" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+              原图素材库 (<span id="figure-count-badge">0</span>)
+            </button>
+            <button id="audit-figures-btn" class="subtle-btn" disabled>缺图检查</button>
+            <button id="resume" class="subtle-btn hidden">从失败处继续生成</button>
+            <span id="chapter-count" class="hint"></span>
+          </div>
+
+          <!-- Worker Log Details -->
+          <details class="log-details">
+            <summary>查看工作进程与 XeLaTeX 编译日志</summary>
+            <pre id="worker-log" class="raw-log">暂无日志</pre>
+          </details>
+
+          <!-- Download Action Bar -->
+          <div id="downloads" class="downloads hidden">
+            <a id="pdf-link" class="download-pill">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              下载成品 PDF
+            </a>
+            <a id="md-link" class="download-pill">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              下载 Markdown 文稿
+            </a>
+            <a id="tex-link" class="download-pill">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              下载 LaTeX 源码
+            </a>
+          </div>
+        </div>
+
+        <!-- History Panel -->
+        <div class="history-panel" id="history">
+          <div class="section-head">
+            <div>
+              <h2>历史生成记录</h2>
+              <div class="hint">查看本机最近创建的任务状态与产物</div>
+            </div>
+          </div>
+          <div id="history-rows">
+            <div class="empty-state">暂无历史任务</div>
+          </div>
+        </div>
+      </div>
+
+      <footer>CourseLM Studio · 本地个人工作台 · 驱动出版级复习讲义自动编排</footer>
+    </div>
+  </main>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: Source Figure Asset Library & View Panel          -->
+<!-- ======================================================== -->
+<section id="figures-panel" class="figures-panel hidden" aria-label="原图素材库">
+  <header class="figures-header">
+    <button id="close-figures-panel" class="subtle-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      返回工作台
+    </button>
+    <div class="figures-title-wrap">
+      <strong id="figures-course-title">原始题图素材库</strong>
+      <small>高清晰度 · 严格可追溯 · 原位裁剪与排版插入</small>
+    </div>
+    <div class="figures-header-actions">
+      <button id="fig-scan-btn" class="outline-btn">⟳ 扫描提取资料原图</button>
+      <button id="fig-crop-btn" class="primary-btn-sm">+ 从 PDF 手动框选</button>
+      <button id="fig-audit-btn" class="outline-btn">缺图审核报告</button>
+    </div>
+  </header>
+  <div class="figures-filter-bar">
+    <div class="filter-controls">
+      <select id="fig-source-select" class="std-select"><option value="">全部源文件</option></select>
+      <select id="fig-status-select" class="std-select">
+        <option value="">全部状态</option>
+        <option value="confirmed">已确认</option>
+        <option value="pending">待审核</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <input type="text" id="fig-search-input" placeholder="按图注、邻近文字、文件名检索…" class="search-input">
+    </div>
+    <span class="figures-count-text">共 <b id="figure-badge-count">0</b> 张原始题图资产</span>
+  </div>
+  <div id="figures-grid" class="figures-grid"></div>
+</section>
+
+<!-- ======================================================== -->
+<!-- MODAL: PDF High-Precision Region Cropper                 -->
+<!-- ======================================================== -->
+<div id="pdf-cropper-modal" class="modal-overlay hidden">
+  <div class="cropper-modal-dialog">
+    <div class="modal-header">
+      <div>
+        <strong>PDF 原图选区与高精度裁剪</strong>
+        <div id="cropper-status-msg" class="modal-sub">拖拽鼠标绘制矩形框以精确截取矢量图、受力图或公式图</div>
+      </div>
+      <button id="cropper-close-btn" class="icon-close-btn">✕</button>
+    </div>
+    <div class="cropper-toolbar">
+      <label class="toolbar-label">源文件: <select id="cropper-file-select" class="std-select"></select></label>
+      <div class="page-nav">
+        <button id="cropper-prev-btn" class="outline-btn btn-xs">上一页</button>
+        <span class="page-indicator">第 <input type="number" id="cropper-page-num" min="1" value="1" class="page-input"> / <span id="cropper-total-pages">1</span> 页</span>
+        <button id="cropper-next-btn" class="outline-btn btn-xs">下一页</button>
+      </div>
+      <div class="zoom-controls">
+        <button id="cropper-zoom-out" class="outline-btn btn-xs">-</button>
+        <span id="cropper-zoom-level" class="zoom-text">125%</span>
+        <button id="cropper-zoom-in" class="outline-btn btn-xs">+</button>
+      </div>
+      <span id="cropper-hud" class="cropper-hud">尚未选择区域</span>
+    </div>
+    <div class="cropper-body">
+      <div class="cropper-canvas-wrap">
+        <div class="canvas-stack" id="canvas-stack">
+          <canvas id="pdf-render-canvas"></canvas>
+          <canvas id="pdf-selection-canvas" class="selection-overlay"></canvas>
+        </div>
+      </div>
+      <div class="cropper-sidebar">
+        <b>裁剪区域预览</b>
+        <div class="crop-preview-box">
+          <canvas id="cropper-preview-canvas"></canvas>
+        </div>
+        <div class="field" style="margin-top:14px;">
+          <label for="cropper-caption-input">题图图注 <em>*</em></label>
+          <input id="cropper-caption-input" placeholder="例如：图 1-2 受控源等效电路图">
+        </div>
+        <div class="cropper-tips">
+          <p>• 以 <b>300 DPI</b> 矢量高精度渲染并截取</p>
+          <p>• 自动记录源文件、页码与几何坐标</p>
+          <p>• 严格保留原图元件标号与连线结构</p>
+        </div>
+        <button id="cropper-confirm-btn" class="primary-btn" style="margin-top:auto;">
+          确认裁剪并保存为题图资产
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: Figure Picker for Markdown Editor                 -->
+<!-- ======================================================== -->
+<div id="figure-picker-modal" class="modal-overlay hidden">
+  <div class="picker-modal-dialog">
+    <div class="modal-header">
+      <div>
+        <strong>插入原始题图</strong>
+        <div class="modal-sub">选择当前任务的已确认素材插入 Markdown 光标位置</div>
+      </div>
+      <button id="picker-close-btn" class="icon-close-btn">✕</button>
+    </div>
+    <div class="picker-body">
+      <div class="picker-search-bar">
+        <input type="text" id="picker-search" placeholder="快速筛选题图…">
+      </div>
+      <div id="picker-figures-grid" class="picker-figures-grid"></div>
+      <div class="picker-config-bar">
+        <div class="picker-field flex-fill">
+          <label>图注说明</label>
+          <input id="picker-caption-override" placeholder="可修改图注标题">
+        </div>
+      </div>
+      <div class="picker-preview-code">
+        <span>生成的 Markdown 语法：</span>
+        <code id="picker-code-preview">请选择题图…</code>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="outline-btn" onclick="closeFigurePicker()">取消</button>
+      <button id="picker-insert-btn" class="primary-btn-sm" disabled>绑定到当前题目</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: Missing Figure Audit                              -->
+<!-- ======================================================== -->
+<div id="figure-audit-modal" class="modal-overlay hidden">
+  <div class="audit-modal-dialog">
+    <div class="modal-header">
+      <div>
+        <strong>AI 讲义缺图检查与质量审核</strong>
+        <div class="modal-sub">扫描文稿中“如图所示/由电路图可知”等提示词与实际插图的对应关系</div>
+      </div>
+      <button id="audit-close-btn" class="icon-close-btn">✕</button>
+    </div>
+    <div class="audit-body">
+      <div id="audit-loading" class="empty-state">正在进行文稿与原图全量审计…</div>
+      <div id="audit-results" class="hidden">
+        <div class="audit-metrics-grid">
+          <div class="audit-metric-item">
+            <span class="m-val" id="audit-m-total">0</span>
+            <span class="m-lbl">讲义总插图数</span>
+          </div>
+          <div class="audit-metric-item">
+            <span class="m-val ok" id="audit-m-valid">0</span>
+            <span class="m-lbl">有效来源图片数</span>
+          </div>
+          <div class="audit-metric-item">
+            <span class="m-val danger" id="audit-m-missing">0</span>
+            <span class="m-lbl">图片丢失数</span>
+          </div>
+          <div class="audit-metric-item">
+            <span class="m-val warn" id="audit-m-pending">0</span>
+            <span class="m-lbl">待确认匹配数</span>
+          </div>
+          <div class="audit-metric-item">
+            <span class="m-val warn" id="audit-m-warnings">0</span>
+            <span class="m-lbl">疑似缺图段落数</span>
+          </div>
+        </div>
+        <h3 class="audit-section-title">缺图警告与候选原图推荐列表</h3>
+        <div id="audit-warnings-list" class="audit-warnings-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- SECTION: Markdown & LaTeX Handout Document Editor       -->
+<!-- ======================================================== -->
+<section id="editor" class="editor-panel hidden" aria-label="讲义编辑工作台">
+  <header class="editor-header">
+    <button id="close-editor" class="subtle-btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      制作工作台
+    </button>
+    <div class="editor-header-meta">
+      <strong id="editor-course">讲义编辑</strong>
+      <small id="editor-state">浏览器即时预览 · 最终排版由 XeLaTeX 严格编译呈现</small>
+    </div>
+    <div class="editor-header-actions">
+      <button id="rebuild" class="primary-btn-sm">保存并重新编译 PDF</button>
+      <button id="deliver" class="outline-btn">确认整份讲义可交付</button>
+    </div>
+  </header>
+
+  <div class="editor-notice">
+    <span id="save-state" role="status">选择章节开始编辑</span>
+    <span class="editor-reminder">审核重点：公式规范 · 典型例题解答 · 事实来源 · 版权合规</span>
+  </div>
+
+  <div class="editor-grid">
+    <!-- Document Index Tree -->
+    <aside class="document-sidebar">
+      <h2>章节与文件目录</h2>
+      <nav id="documents"></nav>
+      <p class="sidebar-tip">修改后需重新编译。生成和编译进行期间请暂停编辑。</p>
+    </aside>
+
+    <!-- Source Code Editor Pane -->
+    <section class="source-pane">
+      <div class="pane-toolbar">
+        <strong id="document-name">Markdown 源稿</strong>
+        <div class="toolbar-btn-group">
+          <button id="editor-insert-fig-btn" class="outline-btn btn-xs" disabled>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            插入原图
+          </button>
+          <button id="editor-audit-fig-btn" class="subtle-btn btn-xs" disabled>缺图检查</button>
+          <button id="save-doc" class="outline-btn btn-xs" disabled>保存 (Ctrl+S)</button>
+        </div>
+      </div>
+      <div class="code-editor">
+        <pre id="highlight" aria-hidden="true"></pre>
+        <textarea id="markdown-editor" aria-label="Markdown 编辑区" spellcheck="false" disabled></textarea>
+      </div>
+      <div class="document-tools">
+        <label>章节审核状态:
+          <select id="review">
+            <option value="pending">待审核</option>
+            <option value="approved">已审核</option>
+            <option value="changes">需要修改</option>
+          </select>
+        </label>
+        <button id="reload-doc" class="subtle-btn btn-xs">重新加载</button>
+        <label>历史版本:
+          <select id="versions">
+            <option value="">选择版本</option>
+          </select>
+        </label>
+        <button id="restore-doc" class="subtle-btn btn-xs">恢复版本</button>
+      </div>
+    </section>
+
+    <!-- Live Preview Pane -->
+    <section class="preview-pane">
+      <div class="pane-toolbar">
+        <div class="preview-tabs">
+          <button id="markdown-tab" class="selected">排版内容预览</button>
+          <button id="pdf-tab">最终编译 PDF</button>
+        </div>
+        <a id="editor-pdf-download" class="hidden" download>下载最新 PDF ↗</a>
+      </div>
+      <article id="markdown-preview" class="markdown-preview"></article>
+      <div id="pdf-preview" class="hidden">
+        <p id="pdf-message">保存修改后点击“重新编译 PDF”即可在此查看最新排版成品。</p>
+        <iframe id="pdf-frame" class="hidden" title="最新讲义 PDF 预览"></iframe>
+      </div>
+    </section>
+  </div>
+
+  <details class="editor-errors">
+    <summary>构建诊断与错误日志</summary>
+    <pre id="compile-log">暂无构建日志</pre>
+  </details>
+</section>
+
+<!-- Feedback Toast Notification -->
+<div class="toast hidden" id="toast" role="status"></div>
+
+<!-- Vendors and Application Scripts -->
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/vendor/pdfjs/pdf.js"></script>
+<script src="/app.js"></script>
+<script src="/editor.js"></script>
+<script src="/figures.js"></script>
+</body>
+</html>

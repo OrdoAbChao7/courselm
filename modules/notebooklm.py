@@ -24,15 +24,24 @@ from typing import TYPE_CHECKING, Any, Iterator
 from loguru import logger
 from pydantic import BaseModel
 
-from notebooklm import NotebookLMClient
-from notebooklm.exceptions import (
-    AuthError,
-    AuthExtractionError,
-    HeadlessLoginRequiredError,
-    NotebookLMError,
-    NotebookLimitError,
-    RateLimitError,
-)
+try:
+    from notebooklm import NotebookLMClient
+    from notebooklm.exceptions import (
+        AuthError,
+        AuthExtractionError,
+        HeadlessLoginRequiredError,
+        NotebookLMError,
+        NotebookLimitError,
+        RateLimitError,
+    )
+except ImportError:
+    NotebookLMClient = Any  # type: ignore
+    class NotebookLMError(Exception): pass  # type: ignore
+    class AuthError(NotebookLMError): pass  # type: ignore
+    class AuthExtractionError(NotebookLMError): pass  # type: ignore
+    class HeadlessLoginRequiredError(NotebookLMError): pass  # type: ignore
+    class NotebookLimitError(NotebookLMError): pass  # type: ignore
+    class RateLimitError(NotebookLMError): pass  # type: ignore
 
 if TYPE_CHECKING:
     from modules.file_manager import CourseManifest
